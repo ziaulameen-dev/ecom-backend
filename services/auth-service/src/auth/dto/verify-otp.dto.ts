@@ -34,4 +34,10 @@ export class VerifyOtpDto {
   @IsString()
   @MaxLength(30)
   mobile?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  // Preferred email language, e.g. "en", "es" (falls back to Accept-Language).
+  locale?: string;
 }

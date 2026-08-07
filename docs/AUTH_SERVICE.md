@@ -45,7 +45,9 @@ only `{ otp }`.
 
 OTP emails are purpose-aware (`MailService`): the subject and body say **what**
 the code is for (sign-in, email change, deletion), **who** it was sent to, and
-what to do if it wasn't them. The brand shown is `APP_NAME`.
+what to do if it wasn't them. The brand shown is `APP_NAME`. Copy is **localized**
+(`mail/i18n.ts`, currently en/es/fr/ar, RTL-aware) — the language is the user's
+saved `locale`, else the request's `Accept-Language`, else English.
 
 **Account deletion is a soft-delete (deactivation)**, also OTP-confirmed. The
 row is retained (so future order history survives), live PII is cleared, and the

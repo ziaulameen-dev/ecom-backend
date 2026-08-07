@@ -30,6 +30,10 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   mobile!: string | null;
 
+  // Preferred language for emails (ISO 639-1, e.g. 'en','es','fr','ar').
+  @Column({ type: 'varchar', nullable: true })
+  locale!: string | null;
+
   // Set while an email change is in progress (the target address). Cleared
   // once the change completes. See the /auth/email/* flow.
   @Column({ name: 'pending_email', type: 'varchar', nullable: true })

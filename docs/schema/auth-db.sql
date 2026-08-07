@@ -24,6 +24,7 @@ CREATE TABLE public.users (
     email         varchar     NOT NULL,                       -- login identifier (unique); a tombstone after soft-delete
     name          varchar         NULL,                       -- optional display name
     mobile        varchar         NULL,                       -- optional phone number
+    locale        varchar         NULL,                       -- preferred email language (ISO 639-1, e.g. en/es/fr/ar)
     pending_email varchar         NULL,                       -- target address during an email change; cleared when it completes
     roles         text[]      NOT NULL DEFAULT '{customer}',  -- e.g. {admin} or {customer}
     deleted_at    timestamp       NULL,                       -- soft-delete (deactivation) timestamp; NULL = active

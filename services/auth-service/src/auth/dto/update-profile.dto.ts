@@ -11,4 +11,9 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(30)
   mobile?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  locale?: string;
 }

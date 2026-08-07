@@ -13,6 +13,7 @@ import { User } from './user.entity';
 export interface UserProfile {
   name?: string;
   mobile?: string;
+  locale?: string;
 }
 
 /**
@@ -53,6 +54,7 @@ export class UsersService implements OnModuleInit {
     const user = await this.mustFind(id);
     if (profile.name !== undefined) user.name = profile.name ?? null;
     if (profile.mobile !== undefined) user.mobile = profile.mobile ?? null;
+    if (profile.locale !== undefined) user.locale = profile.locale ?? null;
     return this.users.save(user);
   }
 
@@ -111,6 +113,7 @@ export class UsersService implements OnModuleInit {
       email: email.toLowerCase(),
       name: profile.name ?? null,
       mobile: profile.mobile ?? null,
+      locale: profile.locale ?? null,
       roles,
     });
     return this.users.save(user);

@@ -50,8 +50,11 @@ export class AuthController {
   // hard (5 per 15 min per IP). Only enforced when RATE_LIMIT_ENABLED=true.
   @Throttle({ default: { limit: 5, ttl: 900_000 } })
   // Step 1: email a one-time code. Returns a challenge, not a token.
-  requestOtp(@Body() dto: RequestOtpDto) {
-    return this.auth.requestOtp(dto.email);
+  requestOtp(
+    @Body() dto: RequestOtpDto,
+    @Headers('accept-language') acceptLanguage: string,
+  ) {
+    return this.auth.requestOtp(dto.email, acceptLanguage);
   }
 
   @Post('verify-otp')
@@ -63,12 +66,15 @@ export class AuthController {
   async verifyOtp(
     @Body() dto: VerifyOtpDto,
     @Headers(AUTH_SOURCE_HEADER) source: string,
+    @Headers('accept-language') acceptLanguage: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.verifyOtp(dto.email, dto.otp, {
-      name: dto.name,
-      mobile: dto.mobile,
-    });
+    const result = await this.auth.verifyOtp(
+      dto.email,
+      dto.otp,
+      { name: dto.name, mobile: dto.mobile, locale: dto.locale },
+      acceptLanguage,
+    );
     return this.deliver(result, source, res);
   }
 
@@ -133,6 +139,7 @@ export class AuthController {
     return this.auth.updateProfile(user.sub, {
       name: dto.name,
       mobile: dto.mobile,
+      locale: dto.locale,
     });
   }
 

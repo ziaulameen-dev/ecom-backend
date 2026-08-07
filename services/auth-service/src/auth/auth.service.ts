@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { KeysService } from '../keys/keys.service';
+import { resolveLocale } from '../mail/i18n';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from '../otp/otp.service';
 import { RefreshService } from '../refresh/refresh.service';
@@ -18,6 +19,7 @@ export interface UserView {
   email: string;
   name: string | null;
   mobile: string | null;
+  locale: string | null;
   roles: string[];
 }
 
@@ -69,18 +71,22 @@ export class AuthService {
    * Step 1: email a one-time code. Works for both new and returning users —
    * a new email simply becomes a new account when it verifies (step 2).
    */
-  async requestOtp(email: string): Promise<OtpChallenge> {
+  async requestOtp(
+    email: string,
+    acceptLanguage?: string,
+  ): Promise<OtpChallenge> {
     const normalized = email.toLowerCase();
-    const isNewUser = !(await this.users.findByEmail(normalized));
+    const existing = await this.users.findByEmail(normalized);
+    const locale = resolveLocale(acceptLanguage, existing?.locale);
 
     const { code, ttlSeconds } = await this.otp.issue(normalized);
-    await this.mail.sendOtp(normalized, code, ttlSeconds, 'login');
+    await this.mail.sendOtp(normalized, code, ttlSeconds, 'login', locale);
 
     return {
       otpRequired: true,
       email: normalized,
       expiresInSeconds: ttlSeconds,
-      isNewUser,
+      isNewUser: !existing,
     };
   }
 
@@ -92,6 +98,7 @@ export class AuthService {
     email: string,
     code: string,
     profile: UserProfile = {},
+    acceptLanguage?: string,
   ): Promise<AuthResult> {
     const result = await this.otp.verify(email, code);
     if (!result.ok) {
@@ -101,7 +108,11 @@ export class AuthService {
 
     const existing = await this.users.findByEmail(email);
     const user =
-      existing ?? (await this.users.create(email, ['customer'], profile));
+      existing ??
+      (await this.users.create(email, ['customer'], {
+        ...profile,
+        locale: resolveLocale(acceptLanguage, profile.locale),
+      }));
 
     await this.audit.record(user.id, 'login', { isNewUser: !existing });
     return this.issue(user);
@@ -135,7 +146,13 @@ export class AuthService {
     // The new address isn't asked for yet — the user just confirms it's them by
     // receiving a code at their CURRENT inbox. They'll supply newEmail next.
     const { code, ttlSeconds } = await this.otp.issue(user.email);
-    await this.mail.sendOtp(user.email, code, ttlSeconds, 'email-change-old');
+    await this.mail.sendOtp(
+      user.email,
+      code,
+      ttlSeconds,
+      'email-change-old',
+      resolveLocale(null, user.locale),
+    );
 
     return {
       otpRequired: true,
@@ -175,6 +192,7 @@ export class AuthService {
       newCode,
       ttlSeconds,
       'email-change-new',
+      resolveLocale(null, user.locale),
     );
 
     return {
@@ -223,7 +241,13 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found');
 
     const { code, ttlSeconds } = await this.otp.issue(user.email);
-    await this.mail.sendOtp(user.email, code, ttlSeconds, 'account-deletion');
+    await this.mail.sendOtp(
+      user.email,
+      code,
+      ttlSeconds,
+      'account-deletion',
+      resolveLocale(null, user.locale),
+    );
 
     return { otpRequired: true, sentTo: user.email, expiresInSeconds: ttlSeconds };
   }
@@ -322,6 +346,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       mobile: user.mobile,
+      locale: user.locale,
       roles: user.roles,
     };
   }
