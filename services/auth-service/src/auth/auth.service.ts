@@ -4,7 +4,9 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuditService } from '../audit/audit.service';
+import { DenylistService } from '../denylist/denylist.service';
 import { KeysService } from '../keys/keys.service';
 import { resolveLocale } from '../mail/i18n';
 import { MailService } from '../mail/mail.service';
@@ -65,7 +67,14 @@ export class AuthService {
     private readonly mail: MailService,
     private readonly refresh: RefreshService,
     private readonly audit: AuditService,
+    private readonly denylist: DenylistService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Denylist TTL — how long a revoked sid stays blocked (access-token life). */
+  private get denyTtl(): number {
+    return this.config.get<number>('jwt.accessTokenTtlSeconds')!;
+  }
 
   /**
    * Step 1: email a one-time code. Works for both new and returning users —
@@ -267,7 +276,7 @@ export class AuthService {
     }
 
     await this.users.softDelete(userId);
-    await this.refresh.revokeAllForUser(userId);
+    await this.revokeAllSessions(userId);
     await this.audit.record(userId, 'account_deleted');
     return { deleted: true };
   }
@@ -302,6 +311,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       roles: user.roles,
+      sid: issued.sid,
     });
     return {
       accessToken,
@@ -312,25 +322,35 @@ export class AuthService {
     };
   }
 
-  /** Revoke a single session (logout). */
-  logout(refreshToken: string | null): Promise<void> {
-    return refreshToken ? this.refresh.revoke(refreshToken) : Promise.resolve();
+  /** Revoke a single session (logout) — refresh token + its access token. */
+  async logout(refreshToken: string | null): Promise<void> {
+    if (!refreshToken) return;
+    const sid = await this.refresh.revoke(refreshToken);
+    if (sid) await this.denylist.deny(sid, this.denyTtl);
   }
 
-  /** Revoke every session for a user (logout everywhere). */
+  /** Revoke every session for a user (logout everywhere) + their access tokens. */
   async logoutAll(userId: string): Promise<void> {
-    await this.refresh.revokeAllForUser(userId);
+    await this.revokeAllSessions(userId);
     await this.audit.record(userId, 'logout_all');
+  }
+
+  /** Revoke all refresh tokens for a user and denylist their access tokens. */
+  private async revokeAllSessions(userId: string): Promise<void> {
+    const sids = await this.refresh.revokeAllForUser(userId);
+    await Promise.all(sids.map((sid) => this.denylist.deny(sid, this.denyTtl)));
   }
 
   /** Mint an access + refresh token pair and shape the response. */
   private async issue(user: User): Promise<AuthResult> {
+    // Create the refresh token first so its id can be the access token's `sid`.
+    const issued = await this.refresh.issue(user.id);
     const accessToken = this.keys.signAccessToken({
       sub: user.id,
       email: user.email,
       roles: user.roles,
+      sid: issued.sid,
     });
-    const issued = await this.refresh.issue(user.id);
     return {
       accessToken,
       tokenType: 'Bearer',

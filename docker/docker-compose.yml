@@ -64,6 +64,20 @@ services:
       - '1025' # SMTP, internal only
     restart: unless-stopped
 
+  # ---- Redis (shared session denylist for instant token revocation) ---------
+  redis:
+    image: redis:7-alpine
+    # Published for debugging; both services reach it as redis:6379 internally.
+    # Host 6381 avoids other local Redis instances on 6379/6380.
+    ports:
+      - '${REDIS_HOST_PORT:-6381}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   # ---- Auth service (issues JWTs, publishes JWKS, sends OTP email) -----------
   auth-service:
     build:
@@ -86,6 +100,8 @@ services:
       SMTP_PORT: ${SMTP_PORT}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       AUTH_DB_HOST: auth-db
       AUTH_DB_PORT: 5432
       AUTH_DB_USER: ${AUTH_DB_USER}
@@ -99,6 +115,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   # ---- Ecom API (verifies JWTs via the auth service's JWKS) -----------------
@@ -115,6 +133,8 @@ services:
       # Must match the auth service's cookie name so the guard can read it.
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       ECOM_DB_HOST: ecom-db
       ECOM_DB_PORT: 5432
       ECOM_DB_USER: ${ECOM_DB_USER}
@@ -128,6 +148,8 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_started
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   # ---- nginx gateway (the single public entry point) ------------------------

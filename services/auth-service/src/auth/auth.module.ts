@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
+import { DenylistModule } from '../denylist/denylist.module';
 import { KeysModule } from '../keys/keys.module';
 import { MailModule } from '../mail/mail.module';
 import { OtpModule } from '../otp/otp.module';
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     MailModule,
     RefreshModule,
     AuditModule,
+    DenylistModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { DenylistService } from '../denylist/denylist.service';
 import { KeysService } from '../keys/keys.service';
 import { UsersService } from '../users/users.service';
 
@@ -31,6 +32,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly keys: KeysService,
     private readonly config: ConfigService,
     private readonly users: UsersService,
+    private readonly denylist: DenylistService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -40,11 +42,16 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing credentials');
     }
 
-    let claims: AuthUser;
+    let claims: AuthUser & { sid: string };
     try {
       claims = this.keys.verifyAccessToken(token);
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
+    }
+
+    // Revoked session (logout / logout-all / delete) -> reject immediately.
+    if (await this.denylist.isDenied(claims.sid)) {
+      throw new UnauthorizedException('Session ended');
     }
 
     const user = await this.users.findById(claims.sub);

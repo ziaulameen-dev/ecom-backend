@@ -24,6 +24,7 @@ export interface AccessTokenClaims {
   sub: string; // user id
   email: string;
   roles: string[];
+  sid: string; // session id (the refresh-token row id) — used for revocation
 }
 
 /**
@@ -106,6 +107,7 @@ export class KeysService implements OnModuleInit {
       sub: payload.sub as string,
       email: (payload.email as string) ?? '',
       roles: (payload.roles as string[]) ?? [],
+      sid: (payload.sid as string) ?? '',
     };
   }
 
@@ -136,7 +138,7 @@ export class KeysService implements OnModuleInit {
       ) as jwt.SignOptions['expiresIn'],
     };
     return jwt.sign(
-      { email: claims.email, roles: claims.roles },
+      { email: claims.email, roles: claims.roles, sid: claims.sid },
       this.privateKeyPem,
       options,
     );

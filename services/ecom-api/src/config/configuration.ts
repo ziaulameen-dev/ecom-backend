@@ -21,6 +21,13 @@ export default () => ({
     cookieName: process.env.AUTH_COOKIE_NAME ?? 'access_token',
   },
 
+  // Redis — shared session denylist written by the auth-service. This API
+  // checks it per request so revoked (logged-out) tokens are rejected at once.
+  redis: {
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+  },
+
   // CORS allowlist for browser frontends on other origins. Comma-separated;
   // empty -> reflect the request origin (dev). Shared with the auth-service via
   // the same CORS_ORIGINS env so both services agree.

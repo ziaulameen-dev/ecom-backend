@@ -7,8 +7,9 @@ import { RefreshService } from './refresh.service';
 function makeRepo(): jest.Mocked<Repository<RefreshToken>> {
   return {
     findOne: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
     save: jest.fn().mockImplementation((x) => Promise.resolve(x)),
-    create: jest.fn().mockImplementation((x) => x),
+    create: jest.fn().mockImplementation((x) => ({ id: 'new-sid', ...x })),
     update: jest.fn().mockResolvedValue({ affected: 1 }),
     delete: jest.fn().mockResolvedValue({ affected: 2 }),
   } as unknown as jest.Mocked<Repository<RefreshToken>>;
@@ -83,9 +84,14 @@ describe('RefreshService', () => {
   });
 
   describe('revokeAllForUser', () => {
-    it('marks all active tokens revoked', async () => {
-      await service.revokeAllForUser('user-1');
-      expect(repo.update).toHaveBeenCalled();
+    it('marks all active tokens revoked and returns their sids', async () => {
+      repo.find.mockResolvedValue([
+        { id: 's1' } as RefreshToken,
+        { id: 's2' } as RefreshToken,
+      ]);
+      const sids = await service.revokeAllForUser('user-1');
+      expect(sids).toEqual(['s1', 's2']);
+      expect(repo.save).toHaveBeenCalled();
     });
   });
 });

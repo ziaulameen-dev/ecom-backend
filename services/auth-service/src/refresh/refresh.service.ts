@@ -9,6 +9,7 @@ import { RefreshToken } from './refresh-token.entity';
 export interface IssuedRefreshToken {
   token: string;
   expiresAt: Date;
+  sid: string; // the row id — also the access token's session id (sid)
 }
 
 /**
@@ -31,10 +32,10 @@ export class RefreshService {
     const ttlDays = this.config.get<number>('refresh.ttlDays')!;
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
-    await this.tokens.save(
+    const row = await this.tokens.save(
       this.tokens.create({ userId, tokenHash: this.hash(token), expiresAt }),
     );
-    return { token, expiresAt };
+    return { token, expiresAt, sid: row.id };
   }
 
   /**
@@ -58,20 +59,32 @@ export class RefreshService {
     return { userId: row.userId, issued };
   }
 
-  /** Revoke a single token (logout). No-op if it's unknown. */
-  async revoke(token: string): Promise<void> {
-    await this.tokens.update(
-      { tokenHash: this.hash(token), revokedAt: IsNull() },
-      { revokedAt: new Date() },
-    );
+  /**
+   * Revoke a single token (logout). Returns the revoked session id (row id) so
+   * the caller can denylist it, or null if the token was unknown/already gone.
+   */
+  async revoke(token: string): Promise<string | null> {
+    const row = await this.tokens.findOne({
+      where: { tokenHash: this.hash(token), revokedAt: IsNull() },
+    });
+    if (!row) return null;
+    row.revokedAt = new Date();
+    await this.tokens.save(row);
+    return row.id;
   }
 
-  /** Revoke every active token for a user (logout-all / account deletion). */
-  async revokeAllForUser(userId: string): Promise<void> {
-    await this.tokens.update(
-      { userId, revokedAt: IsNull() },
-      { revokedAt: new Date() },
-    );
+  /**
+   * Revoke every active token for a user (logout-all / account deletion).
+   * Returns the revoked session ids so the caller can denylist them all.
+   */
+  async revokeAllForUser(userId: string): Promise<string[]> {
+    const rows = await this.tokens.find({
+      where: { userId, revokedAt: IsNull() },
+    });
+    const now = new Date();
+    for (const row of rows) row.revokedAt = now;
+    if (rows.length) await this.tokens.save(rows);
+    return rows.map((r) => r.id);
   }
 
   /** Delete expired/revoked rows (called by the scheduled cleanup). */

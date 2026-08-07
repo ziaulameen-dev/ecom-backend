@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { DenylistService } from './denylist.service';
 import { JwksService } from './jwks.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -12,7 +13,7 @@ import { RolesGuard } from './roles.guard';
  * PUBLIC keys fetched from the auth service's JWKS endpoint.
  */
 @Module({
-  providers: [JwksService, JwtAuthGuard, RolesGuard],
-  exports: [JwksService, JwtAuthGuard, RolesGuard],
+  providers: [JwksService, DenylistService, JwtAuthGuard, RolesGuard],
+  exports: [JwksService, DenylistService, JwtAuthGuard, RolesGuard],
 })
 export class AuthModule {}

@@ -55,9 +55,9 @@ real email is *freed* — moved to `deleted_email` while `email` becomes a uniqu
 tombstone — so the same address can sign up again as a fresh, separate account.
 It intentionally **retains PII** (`deleted_email`), so it is deactivation, not
 GDPR erasure; add a scrub step after your retention window if you need true
-erasure. The guard rejects tokens whose account is deleted, so a still-valid
-token can't act on a deactivated account (bearer tokens on the ecom-api still
-work until they expire — the usual stateless-JWT trade-off).
+erasure. The guard rejects tokens whose account is deleted, and deletion also denylists
+the account's sessions, so its access tokens stop working immediately on both
+services (see **Instant revocation** above).
 
 **Auth is passwordless and signup == login:** email → emailed code → token; a
 brand-new email becomes an account when it verifies. See
@@ -70,6 +70,14 @@ stored hashed, **single-use (rotated on every `/auth/refresh`)**, and revocable
 (`/auth/logout`, `/auth/logout-all`, and automatically on account deletion). The
 RSA **signing key persists** across restarts when `JWT_PRIVATE_KEY_BASE64` is
 set (otherwise an ephemeral key is generated and all tokens break on restart).
+
+**Instant revocation:** every access token carries a session id (`sid`, = its
+refresh-token row id). On logout / logout-all / delete, the `sid` is written to
+a **Redis denylist** (TTL = access-token lifetime). Both the auth-service and
+the ecom-api check the denylist per request, so a logged-out **access token
+stops working immediately on both services** — not just after it expires. The
+denylist read fails open (a Redis blip won't take the API down; tokens still
+self-expire). This is why the platform runs a shared Redis (`redis:6379`).
 
 **Token delivery is selectable** (on verify-otp / refresh) via the
 `X-Auth-Source` header:

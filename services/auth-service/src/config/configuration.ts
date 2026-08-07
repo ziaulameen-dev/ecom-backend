@@ -4,6 +4,14 @@
  * The issuer/audience values MUST match what the ecom-api expects when it
  * verifies tokens — they are part of the trust contract between the services.
  */
+/** Parse a zeit/ms-style duration ("15m", "900s", "1h", "30") into seconds. */
+function durationSeconds(v: string): number {
+  const m = /^(\d+)\s*([smh])?$/.exec(v.trim());
+  if (!m) return 900;
+  const n = parseInt(m[1], 10);
+  return n * { s: 1, m: 60, h: 3600 }[(m[2] as 's' | 'm' | 'h') ?? 's'];
+}
+
 export default () => ({
   port: parseInt(process.env.AUTH_PORT ?? '3009', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -18,6 +26,9 @@ export default () => ({
     audience: process.env.JWT_AUDIENCE ?? 'ecom-api',
     // How long an access token is valid (zeit/ms format, e.g. "15m", "900s").
     accessTokenTtl: process.env.ACCESS_TOKEN_TTL ?? '15m',
+    // Same value in seconds — how long a denied session id must stay on the
+    // denylist (i.e. until the access token would have expired anyway).
+    accessTokenTtlSeconds: durationSeconds(process.env.ACCESS_TOKEN_TTL ?? '15m'),
     // Base64-encoded PKCS8 PEM of the RSA private key. When set, the signing
     // key SURVIVES restarts (tokens stay valid, `kid` is stable). When absent
     // an ephemeral key is generated on boot — fine for dev, but every restart
@@ -93,6 +104,13 @@ export default () => ({
       .split(',')
       .map((o) => o.trim())
       .filter(Boolean),
+  },
+
+  // Redis — shared session denylist so logout/-all/delete instantly invalidate
+  // access tokens across BOTH services (they check it per request).
+  redis: {
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
   },
 
   // Per-IP rate limiting (nestjs/throttler). A single switch turns it on/off;

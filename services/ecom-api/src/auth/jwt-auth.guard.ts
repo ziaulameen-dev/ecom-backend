@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
+import { DenylistService } from './denylist.service';
 import { JwksService } from './jwks.service';
 
 /** The verified token claims we attach to the request. */
@@ -33,6 +34,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwks: JwksService,
     private readonly config: ConfigService,
+    private readonly denylist: DenylistService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -57,23 +59,29 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Unable to resolve signing key');
     }
 
+    let payload: jwt.JwtPayload;
     try {
-      const payload = jwt.verify(token, publicKey, {
+      payload = jwt.verify(token, publicKey, {
         algorithms: ['RS256'],
         issuer: this.config.get<string>('jwt.issuer'),
         audience: this.config.get<string>('jwt.audience'),
       }) as jwt.JwtPayload;
-
-      const user: AuthUser = {
-        sub: payload.sub as string,
-        email: (payload.email as string) ?? '',
-        roles: (payload.roles as string[]) ?? [],
-      };
-      (request as Request & { user: AuthUser }).user = user;
-      return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
+
+    // Revoked session (logged out on the auth-service) -> reject at once.
+    if (await this.denylist.isDenied(payload.sid as string)) {
+      throw new UnauthorizedException('Session ended');
+    }
+
+    const user: AuthUser = {
+      sub: payload.sub as string,
+      email: (payload.email as string) ?? '',
+      roles: (payload.roles as string[]) ?? [],
+    };
+    (request as Request & { user: AuthUser }).user = user;
+    return true;
   }
 
   /**
