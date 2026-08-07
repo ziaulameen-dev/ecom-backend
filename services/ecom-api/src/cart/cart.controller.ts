@@ -109,12 +109,9 @@ export class CartController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const cookieName = this.config.get<string>('cart.cookieName')!;
-    const cookies = (req as Request & { cookies?: Record<string, string> })
-      .cookies;
-    const merged = await this.cart.merge(user.sub, cookies?.[cookieName] ?? null);
+    const merged = await this.cart.merge(user.sub, this.readCartId(req));
     // The user's cart is found by token now; drop the stale guest cookie.
-    res.clearCookie(cookieName, { path: '/' });
+    res.clearCookie(this.config.get<string>('cart.cookieName')!, { path: '/' });
     return this.cart.view(merged);
   }
 
@@ -129,21 +126,21 @@ export class CartController {
     op: (cart: Cart) => Promise<CartView>,
   ): Promise<CartView> {
     const user = (req as Request & { user?: AuthUser }).user;
-    const cookieName = this.config.get<string>('cart.cookieName')!;
-    const cookies = (req as Request & { cookies?: Record<string, string> })
-      .cookies;
+    const cartId = this.readCartId(req);
 
     let { cart } = await this.cart.resolveOrCreate(
-      { userId: user?.sub ?? null, cookieCartId: cookies?.[cookieName] ?? null },
+      { userId: user?.sub ?? null, cookieCartId: cartId },
       country,
     );
     if (country && cart.country !== country.toUpperCase()) {
       cart = await this.cart.setCountry(cart, country);
     }
 
-    // Keep guest carts addressable via the cookie.
+    // Keep guest carts addressable: set the cookie (same-origin browsers) — the
+    // cart id is also in the response body so header-based clients (mobile /
+    // cross-origin) can echo it back via X-Cart-Id.
     if (!cart.userId) {
-      res.cookie(cookieName, cart.id, {
+      res.cookie(this.config.get<string>('cart.cookieName')!, cart.id, {
         httpOnly: true,
         sameSite: this.config.get('cart.sameSite'),
         secure: this.config.get<boolean>('cart.secure'),
@@ -152,5 +149,15 @@ export class CartController {
       });
     }
     return op(cart);
+  }
+
+  /** Guest cart id from the X-Cart-Id header (cross-origin) or the cookie. */
+  private readCartId(req: Request): string | null {
+    const header = req.headers['x-cart-id'];
+    if (typeof header === 'string' && header) return header;
+    const cookieName = this.config.get<string>('cart.cookieName')!;
+    const cookies = (req as Request & { cookies?: Record<string, string> })
+      .cookies;
+    return cookies?.[cookieName] ?? null;
   }
 }
