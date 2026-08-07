@@ -1,34 +1,67 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { get } from '@/lib/api';
+import { get, post } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { money } from '@/lib/utils';
 
+interface OrderItem { productId: string; name: string; quantity: number; unitAmountMinor: number }
 interface Order {
   id: string; status: string; currency: string; totalMinor: number; createdAt: string;
-  items: { name: string; quantity: number; unitAmountMinor: number }[];
+  items: OrderItem[];
 }
+interface ReturnReq { id: string; orderId: string; status: string; refundMinor: number }
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   paid: 'default', shipped: 'default', delivered: 'default', fulfilled: 'default',
   pending: 'secondary', failed: 'destructive', cancelled: 'destructive', refunded: 'outline',
 };
 
+const CANCELABLE = ['pending', 'paid'];
+const RETURNABLE = ['shipped', 'delivered', 'fulfilled'];
+
 export default function OrdersPage() {
   const { ready, user } = useStore();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [returns, setReturns] = useState<ReturnReq[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [o, r] = await Promise.all([
+      get('/api/orders').catch(() => []),
+      get('/api/returns').catch(() => []),
+    ]);
+    setOrders(o); setReturns(r); setLoaded(true);
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
     if (!user) { setLoaded(true); return; }
-    get('/api/orders').then(setOrders).catch(() => {}).finally(() => setLoaded(true));
-  }, [ready, user]);
+    load();
+  }, [ready, user, load]);
+
+  async function cancel(id: string) {
+    setBusy(id);
+    try { await post(`/api/orders/${id}/cancel`); await load(); } finally { setBusy(null); }
+  }
+
+  async function requestReturn(o: Order) {
+    const reason = window.prompt('Reason for return? (returns the whole order)') ?? undefined;
+    if (reason === undefined) return;
+    setBusy(o.id);
+    try {
+      await post(`/api/orders/${o.id}/returns`, {
+        reason,
+        items: o.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      });
+      await load();
+    } finally { setBusy(null); }
+  }
 
   if (loaded && !user) {
     return (
@@ -39,30 +72,54 @@ export default function OrdersPage() {
     );
   }
 
+  const returnFor = (orderId: string) => returns.find((r) => r.orderId === orderId);
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-semibold mb-6">Your orders</h1>
       {orders.length === 0 && loaded && <p className="text-muted-foreground">No orders yet.</p>}
       <div className="space-y-3">
-        {orders.map((o) => (
-          <Card key={o.id}>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base font-mono">#{o.id.slice(0, 8)}</CardTitle>
-              <Badge variant={statusVariant[o.status] || 'secondary'}>{o.status}</Badge>
-            </CardHeader>
-            <CardContent className="text-sm">
-              {o.items.map((it, i) => (
-                <div key={i} className="flex justify-between text-muted-foreground">
-                  <span>{it.name} × {it.quantity}</span>
-                  <span>{money(it.unitAmountMinor * it.quantity, o.currency)}</span>
+        {orders.map((o) => {
+          const ret = returnFor(o.id);
+          return (
+            <Card key={o.id}>
+              <CardHeader className="flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-base font-mono">#{o.id.slice(0, 8)}</CardTitle>
+                <Badge variant={statusVariant[o.status] || 'secondary'}>{o.status}</Badge>
+              </CardHeader>
+              <CardContent className="text-sm">
+                {o.items.map((it, i) => (
+                  <div key={i} className="flex justify-between text-muted-foreground">
+                    <span>{it.name} × {it.quantity}</span>
+                    <span>{money(it.unitAmountMinor * it.quantity, o.currency)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between font-semibold border-t mt-2 pt-2">
+                  <span>Total</span><span>{money(o.totalMinor, o.currency)}</span>
                 </div>
-              ))}
-              <div className="flex justify-between font-semibold border-t mt-2 pt-2">
-                <span>Total</span><span>{money(o.totalMinor, o.currency)}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+
+                <div className="flex items-center gap-2 mt-3">
+                  {CANCELABLE.includes(o.status) && (
+                    <Button variant="outline" size="sm" disabled={busy === o.id} onClick={() => cancel(o.id)}>
+                      Cancel
+                    </Button>
+                  )}
+                  {RETURNABLE.includes(o.status) && !ret && (
+                    <Button variant="outline" size="sm" disabled={busy === o.id} onClick={() => requestReturn(o)}>
+                      Request return
+                    </Button>
+                  )}
+                  {ret && (
+                    <span className="text-xs text-muted-foreground">
+                      Return: <strong>{ret.status}</strong>
+                      {ret.refundMinor > 0 && ` · refunded ${money(ret.refundMinor, o.currency)}`}
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

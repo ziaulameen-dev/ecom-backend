@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { get, patch, put } from '@/lib/api';
+import { get, patch, post, put } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { COUNTRIES, money } from '@/lib/utils';
 
@@ -24,6 +24,7 @@ export default function AdminPage() {
       <PricesSection />
       <ShippingSection />
       <OrdersSection />
+      <ReturnsSection />
     </div>
   );
 }
@@ -115,6 +116,11 @@ function OrdersSection() {
     await patch(`/api/admin/orders/${id}/status`, { status });
     await load();
   }
+  async function refund(id: string) {
+    if (!confirm('Full refund this order?')) return;
+    await post(`/api/admin/orders/${id}/refund`, {}); // omit amount = full
+    await load();
+  }
 
   return (
     <Card>
@@ -127,9 +133,55 @@ function OrdersSection() {
             <select className="ml-auto h-9 rounded-md border border-input bg-background px-2" value={o.status} onChange={(e) => setStatus(o.id, e.target.value)}>
               {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={['refunded', 'cancelled', 'pending', 'failed'].includes(o.status)}
+              onClick={() => refund(o.id)}
+            >
+              Refund
+            </Button>
           </div>
         ))}
         {orders.length === 0 && <p className="text-sm text-muted-foreground">No orders.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReturnsSection() {
+  const [returns, setReturns] = useState<
+    { id: string; orderId: string; status: string; reason: string | null; refundMinor: number }[]
+  >([]);
+  const load = () => get('/api/admin/returns').then(setReturns).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  async function act(id: string, action: 'approve' | 'reject' | 'receive') {
+    await patch(`/api/admin/returns/${id}`, { action });
+    await load();
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Returns (RMA)</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {returns.map((r) => (
+          <div key={r.id} className="flex items-center gap-3 text-sm border-b py-2">
+            <span className="font-mono">order #{r.orderId.slice(0, 8)}</span>
+            <span className="text-muted-foreground">{r.reason || '—'}</span>
+            <span className="ml-auto font-medium">{r.status}</span>
+            {r.status === 'requested' && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => act(r.id, 'approve')}>Approve</Button>
+                <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject</Button>
+              </>
+            )}
+            {r.status === 'approved' && (
+              <Button size="sm" onClick={() => act(r.id, 'receive')}>Receive + refund</Button>
+            )}
+          </div>
+        ))}
+        {returns.length === 0 && <p className="text-sm text-muted-foreground">No returns.</p>}
       </CardContent>
     </Card>
   );
