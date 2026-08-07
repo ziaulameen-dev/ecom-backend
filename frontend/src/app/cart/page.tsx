@@ -4,21 +4,14 @@ import { Minus, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { del, patch } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { money } from '@/lib/utils';
 
 export default function CartPage() {
-  const { cart, refreshCart, user } = useStore();
+  const { cart, user, setItemQty, removeItem } = useStore();
 
-  async function setQty(productId: string, quantity: number) {
-    await patch(`/api/cart/items/${productId}`, { quantity });
-    await refreshCart();
-  }
-  async function remove(productId: string) {
-    await del(`/api/cart/items/${productId}`);
-    await refreshCart();
-  }
+  const setQty = (productId: string, quantity: number) => setItemQty(productId, quantity);
+  const remove = (productId: string) => removeItem(productId);
 
   if (!cart || cart.items.length === 0) {
     return (

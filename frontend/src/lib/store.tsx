@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { cartId, get, patch, post, tokens } from './api';
+import { cartId, del, get, patch, post, tokens } from './api';
 
 export interface User {
   id: string;
@@ -37,6 +37,9 @@ interface StoreValue {
   refreshCart: () => Promise<void>;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
+  addItem: (productId: string, quantity?: number) => Promise<void>;
+  setItemQty: (productId: string, quantity: number) => Promise<void>;
+  removeItem: (productId: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -82,6 +85,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setCountryState(c);
   }, []);
 
+  // Cart mutations return the updated cart view — apply it (also stores the id).
+  const addItem = useCallback(async (productId: string, quantity = 1) => {
+    const c = await post('/api/cart/items', {
+      productId,
+      quantity,
+      country: localStorage.getItem('ecom_country') || 'US',
+    });
+    applyCart(c);
+  }, []);
+
+  const setItemQty = useCallback(async (productId: string, quantity: number) => {
+    applyCart(await patch(`/api/cart/items/${productId}`, { quantity }));
+  }, []);
+
+  const removeItem = useCallback(async (productId: string) => {
+    applyCart(await del(`/api/cart/items/${productId}`));
+  }, []);
+
   const logout = useCallback(async () => {
     await post('/auth/logout', { refreshToken: tokens.refresh }, false).catch(() => {});
     tokens.clear();
@@ -108,6 +129,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         refreshCart,
         refreshUser,
         logout,
+        addItem,
+        setItemQty,
+        removeItem,
       }}
     >
       {children}

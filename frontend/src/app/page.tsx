@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { get, post } from '@/lib/api';
+import { get } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { money } from '@/lib/utils';
 
@@ -15,7 +15,7 @@ interface ProductView {
 }
 
 export default function CatalogPage() {
-  const { country, refreshCart } = useStore();
+  const { country, addItem } = useStore();
   const [products, setProducts] = useState<ProductView[]>([]);
   const [adding, setAdding] = useState<string | null>(null);
 
@@ -26,8 +26,7 @@ export default function CatalogPage() {
   async function add(id: string) {
     setAdding(id);
     try {
-      await post('/api/cart/items', { productId: id, quantity: 1, country }, false);
-      await refreshCart();
+      await addItem(id, 1);
     } finally {
       setAdding(null);
     }
