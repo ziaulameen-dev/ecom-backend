@@ -254,21 +254,44 @@ verifier which public key from the JWKS to use.
 | `AUTH_PORT` | 3009 | HTTP port |
 | `JWT_ISSUER` | `ecom-auth` | `iss` claim (must match ecom-api) |
 | `JWT_AUDIENCE` | `ecom-api` | `aud` claim (must match ecom-api) |
-| `ACCESS_TOKEN_TTL` | `15m` | token lifetime |
+| `ACCESS_TOKEN_TTL` | `15m` | access-token lifetime |
+| `JWT_PRIVATE_KEY_BASE64` | (empty) | base64 PKCS8 PEM signing key; empty = ephemeral (dev) |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | refresh-token lifetime |
+| `APP_NAME` | `Ecom` | brand shown in OTP emails |
+| `OTP_RESEND_COOLDOWN_SECONDS` | `60` | min gap between codes to the same email |
 | `CORS_ORIGINS` | (empty) | comma-separated browser origin allowlist; empty reflects the request origin (dev) |
 | `RATE_LIMIT_ENABLED` | `false` | per-IP rate limiting on the auth endpoints (see [OTP_LOGIN.md](./OTP_LOGIN.md)) |
 | `AUTH_DB_HOST/PORT/USER/PASSWORD/NAME` | see `.env.example` | its Postgres |
 
 ---
 
+## Migrations
+
+Dev uses TypeORM `synchronize` (auto-creates tables from entities). For
+**production**, set `NODE_ENV=production` (turns synchronize off) and manage the
+schema with migrations via `src/data-source.ts`:
+
+```bash
+# generate a migration from entity changes (diffs against the target DB)
+npm run migration:generate -- src/migrations/SomeChange
+# apply pending migrations (run this on deploy)
+npm run migration:run
+# roll back the last one
+npm run migration:revert
+```
+
+`src/migrations/…-Init.ts` is the baseline (all current tables + indexes).
+
 ## Things intentionally left for later
 
-- **Refresh tokens / logout** — only short-lived access tokens for now.
-- **Persisted/rotating keys** — currently in-memory (see caveat above).
-- **Migrations** — dev uses TypeORM `synchronize`; production needs migrations.
-- **Per-email rate limiting** — per-IP limits are in place (`RATE_LIMIT_ENABLED`,
-  see [OTP_LOGIN.md](./OTP_LOGIN.md)); per-email is a further step.
-- **Editable profile** — an endpoint to update `name` / `mobile` after signup.
+- **Admin / role management** — roles come from the seed; no endpoint to grant
+  or revoke them yet.
+- **True GDPR erasure** — deletion is deactivation with retained `deleted_email`;
+  add a scrub step after a retention window.
+- **Real email provider** — dev sends to Mailpit; point SMTP at a real provider
+  and set `MAIL_FROM` for production.
+- **Audit IP / user-agent** — the audit log records the actor + action but not
+  yet the request IP / device.
 
 See [JWT_JWKS.md](./JWT_JWKS.md) for how the ecom-api consumes what this service
 produces.
