@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
@@ -9,6 +10,7 @@ import { ConditionalThrottlerGuard } from './common/guards/conditional-throttler
 import { HealthModule } from './health/health.module';
 import { JwksModule } from './jwks/jwks.module';
 import { KeysModule } from './keys/keys.module';
+import { JobsModule } from './jobs/jobs.module';
 import { LoginOtp } from './otp/login-otp.entity';
 import { RefreshToken } from './refresh/refresh-token.entity';
 import { User } from './users/user.entity';
@@ -48,10 +50,12 @@ import { User } from './users/user.entity';
     // auth endpoints tightens this. Only enforced when RATE_LIMIT_ENABLED=true
     // (see ConditionalThrottlerGuard).
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    ScheduleModule.forRoot(),
     KeysModule,
     JwksModule,
     AuthModule,
     HealthModule,
+    JobsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ConditionalThrottlerGuard }],
 })

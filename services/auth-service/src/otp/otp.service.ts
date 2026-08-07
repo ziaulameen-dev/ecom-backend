@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomInt } from 'crypto';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { LoginOtp } from './login-otp.entity';
 
 /** Result of verifying an OTP. */
@@ -90,6 +90,12 @@ export class OtpService {
     // Success — one-time use, so delete it.
     await this.otps.delete({ id: otp.id });
     return { ok: true };
+  }
+
+  /** Delete expired challenges (called by the scheduled cleanup). */
+  async purgeExpired(now: Date = new Date()): Promise<number> {
+    const res = await this.otps.delete({ expiresAt: LessThan(now) });
+    return res.affected ?? 0;
   }
 
   /** Uniformly random numeric string of the given length (may have leading 0s). */

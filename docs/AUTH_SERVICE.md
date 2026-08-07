@@ -30,7 +30,8 @@ and shares nothing with the ecom-api except the public JWKS.
 | POST | `/auth/account/delete` | logged-in | **Step 1**: email an OTP to the current address to confirm deletion |
 | POST | `/auth/account/delete/verify` | logged-in | **Step 2**: confirm the OTP `{ otp }`, soft-delete (deactivate) the account, clear the cookie |
 | GET | `/.well-known/jwks.json` | public | Publish the PUBLIC signing key(s) as a JWKS |
-| GET | `/health` | public | Liveness probe |
+| GET | `/health` | public | Liveness probe (process is up) |
+| GET | `/health/ready` | public | Readiness probe — also pings Postgres (503 if down) |
 
 The `logged-in` routes are protected by a local `JwtAuthGuard` that verifies the
 token with this service's own key (no JWKS needed) — Bearer or cookie, same as
@@ -141,7 +142,10 @@ services/auth-service/src/
 │   ├── user.entity.ts            #   TypeORM entity: users table (email + optional profile)
 │   ├── users.service.ts          #   findByEmail / create (no passwords)
 │   └── users.module.ts
-├── health/                       # GET /health
+├── jobs/                         # scheduled housekeeping (@nestjs/schedule)
+│   ├── cleanup.service.ts        #   purges expired OTPs + refresh tokens (every 30m)
+│   └── jobs.module.ts
+├── health/                       # GET /health, /health/ready (DB ping)
 └── common/                       # response envelope, error filter, @Raw() decorator
 ```
 
