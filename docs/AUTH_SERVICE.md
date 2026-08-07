@@ -22,9 +22,9 @@ and shares nothing with the ecom-api except the public JWKS.
 | POST | `/auth/logout` | public | Clear the auth cookie (cookie mode) |
 | GET | `/auth/me` | logged-in | Current user (id, email, name, mobile, roles) |
 | PATCH | `/auth/profile` | logged-in | Update optional profile (`name` / `mobile`) |
-| POST | `/auth/email/change` | logged-in | **Step 1**: save the target as `pending_email` + email an OTP to the CURRENT address |
-| POST | `/auth/email/verify-old` | logged-in | **Step 2**: confirm the old-email OTP `{ otp }`, then email an OTP to the pending address |
-| POST | `/auth/email/verify-new` | logged-in | **Step 3**: confirm the new-email OTP `{ otp }`, switch the email; re-issues the token |
+| POST | `/auth/email/change` | logged-in | **Step 1**: email an OTP to the CURRENT address (no body — new email asked for next) |
+| POST | `/auth/email/verify-old` | logged-in | **Step 2**: `{ newEmail, otp }` — confirm the old-email OTP, save the target, email an OTP to it |
+| POST | `/auth/email/verify-new` | logged-in | **Step 3**: `{ otp }` — confirm the new-email OTP, switch the email; re-issues the token |
 | POST | `/auth/account/delete` | logged-in | **Step 1**: email an OTP to the current address to confirm deletion |
 | POST | `/auth/account/delete/verify` | logged-in | **Step 2**: confirm the OTP `{ otp }`, soft-delete (deactivate) the account, clear the cookie |
 | GET | `/.well-known/jwks.json` | public | Publish the PUBLIC signing key(s) as a JWKS |
@@ -36,8 +36,13 @@ the ecom-api. **Email change verifies _both_ inboxes**: an OTP to the old email
 (step-up re-auth, so a stolen token alone can't take over the account) *and* an
 OTP to the new email (so you never set an address the user can't receive at).
 The new-email OTP is only sent after the old one is verified, so the steps can't
-be skipped. `newEmail` is supplied once (step 1) and held server-side as
-`pending_email`; the verify steps take only `{ otp }`.
+be skipped. `newEmail` is supplied once, at step 2 (the user just confirms it's
+them at step 1), and is then held server-side as `pending_email`; step 3 takes
+only `{ otp }`.
+
+OTP emails are purpose-aware (`MailService`): the subject and body say **what**
+the code is for (sign-in, email change, deletion), **who** it was sent to, and
+what to do if it wasn't them. The brand shown is `APP_NAME`.
 
 **Account deletion is a soft-delete (deactivation)**, also OTP-confirmed. The
 row is retained (so future order history survives), live PII is cleared, and the

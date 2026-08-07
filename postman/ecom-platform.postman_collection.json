@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Ecom Platform (auth + ecom-api via nginx)",
-    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nThis collection uses BEARER tokens throughout (token in the JSON body, saved to {{accessToken}}). Cookie delivery is shown ONCE — see 'Cookie mode example (X-Auth-Source: cookie)' — add that header to any token-issuing request to get an HttpOnly cookie instead.\n\nRun order: 1. Request OTP -> 2. Read OTP from Mailpit -> 3. Verify OTP (bearer) -> 4-7 account management -> Ecom API (Profile / products).\n\nAuthenticated account routes (Bearer): GET /auth/me, PATCH /auth/profile, and a 3-step email change: POST /auth/email/change -> verify-old (OTP to OLD email) -> verify-new (OTP to NEW email).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
+    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nThis collection uses BEARER tokens throughout (token in the JSON body, saved to {{accessToken}}). Cookie delivery is shown ONCE — see 'Cookie mode example (X-Auth-Source: cookie)' — add that header to any token-issuing request to get an HttpOnly cookie instead.\n\nRun order: 1. Request OTP -> 2. Read OTP from Mailpit -> 3. Verify OTP (bearer) -> 4-7 account management -> Ecom API (Profile / products).\n\nAuthenticated account routes (Bearer): GET /auth/me, PATCH /auth/profile, and a 3-step email change: POST /auth/email/change (OTP to OLD email) -> verify-old {newEmail, otp} (OTP to NEW email) -> verify-new {otp} (switch).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -171,16 +171,12 @@
               { "key": "Content-Type", "value": "application/json" },
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"newEmail\": \"admin-new@example.com\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/auth/email/change",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "email", "change"]
             },
-            "description": "Step 1 of an email change: emails an OTP to the CURRENT address (proves control of the existing inbox). Then run '2. Read OTP from Mailpit' to capture {{otp}}."
+            "description": "Step 1 of an email change: no body needed — just emails an OTP to the CURRENT address (proves control of the existing inbox). The new email is supplied at the next step. Then run '2. Read OTP from Mailpit' to capture {{otp}}."
           }
         },
         {
@@ -193,14 +189,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
+              "raw": "{\n  \"newEmail\": \"admin-new@example.com\",\n  \"otp\": \"{{otp}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/email/verify-old",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "email", "verify-old"]
             },
-            "description": "Step 2: confirms the OTP sent to the OLD email (run '2. Read OTP from Mailpit' first to load {{otp}}). Only the OTP is needed — newEmail was saved server-side at step 1. On success it emails a SECOND OTP to the NEW address. No switch yet."
+            "description": "Step 2: supply the NEW email plus the OTP sent to the OLD one (run '2. Read OTP from Mailpit' first to load {{otp}}). On success the server saves newEmail as pending and emails a SECOND OTP to the NEW address. No switch yet."
           }
         },
         {

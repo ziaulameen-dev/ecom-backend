@@ -8,6 +8,9 @@ export default () => ({
   port: parseInt(process.env.AUTH_PORT ?? '3009', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
 
+  // Brand name shown in transactional emails (subject + signature).
+  appName: process.env.APP_NAME ?? 'Ecom',
+
   jwt: {
     // `iss` claim put into every token and checked by the ecom-api.
     issuer: process.env.JWT_ISSUER ?? 'ecom-auth',

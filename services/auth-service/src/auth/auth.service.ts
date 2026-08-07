@@ -68,7 +68,7 @@ export class AuthService {
     const isNewUser = !(await this.users.findByEmail(normalized));
 
     const { code, ttlSeconds } = await this.otp.issue(normalized);
-    await this.mail.sendOtp(normalized, code, ttlSeconds);
+    await this.mail.sendOtp(normalized, code, ttlSeconds, 'login');
 
     return {
       otpRequired: true,
@@ -120,55 +120,58 @@ export class AuthService {
    * they must prove control of the existing inbox. Fails fast if the new
    * address is already taken.
    */
-  async requestEmailChange(
-    userId: string,
-    newEmail: string,
-  ): Promise<EmailChangeChallenge> {
+  async requestEmailChange(userId: string): Promise<EmailChangeChallenge> {
     const user = await this.users.findById(userId);
     if (!user) throw new UnauthorizedException('User not found');
-    await this.assertEmailFree(newEmail, userId);
 
-    // Remember the target so later steps don't need to resend it.
-    await this.users.setPendingEmail(userId, newEmail);
-
+    // The new address isn't asked for yet — the user just confirms it's them by
+    // receiving a code at their CURRENT inbox. They'll supply newEmail next.
     const { code, ttlSeconds } = await this.otp.issue(user.email);
-    await this.mail.sendOtp(user.email, code, ttlSeconds);
+    await this.mail.sendOtp(user.email, code, ttlSeconds, 'email-change-old');
 
     return {
       otpRequired: true,
       step: 'verify-old',
-      sentTo: user.email, // the OTP goes to the OLD email, on purpose
+      sentTo: user.email,
       expiresInSeconds: ttlSeconds,
     };
   }
 
   /**
-   * Step 2: validate the OTP sent to the OLD email, then email a SECOND OTP to
-   * the pending NEW address to prove the user owns it too. The email is not
-   * switched yet. Because the new-email OTP is only sent here, step 3 cannot
-   * run before this step succeeds.
+   * Step 2: the user supplies the NEW address and the OTP sent to the OLD one.
+   * On success we store the target as `pending_email` and email a SECOND OTP to
+   * the new address to prove they own it too. The email is not switched yet.
+   * Because the new-email OTP is only sent here, step 3 cannot run first.
    */
   async verifyOldEmailForChange(
     userId: string,
+    newEmail: string,
     code: string,
   ): Promise<EmailChangeChallenge> {
     const user = await this.users.findById(userId);
     if (!user) throw new UnauthorizedException('User not found');
-    const pending = this.requirePendingEmail(user.pendingEmail);
-    await this.assertEmailFree(pending, userId);
+    await this.assertEmailFree(newEmail, userId);
 
     const result = await this.otp.verify(user.email, code);
     if (!result.ok) {
       throw new UnauthorizedException(`Invalid code (${result.reason})`);
     }
 
-    const { code: newCode, ttlSeconds } = await this.otp.issue(pending);
-    await this.mail.sendOtp(pending, newCode, ttlSeconds);
+    await this.users.setPendingEmail(userId, newEmail);
+
+    const normalizedNew = newEmail.toLowerCase();
+    const { code: newCode, ttlSeconds } = await this.otp.issue(normalizedNew);
+    await this.mail.sendOtp(
+      normalizedNew,
+      newCode,
+      ttlSeconds,
+      'email-change-new',
+    );
 
     return {
       otpRequired: true,
       step: 'verify-new',
-      sentTo: pending, // this OTP goes to the NEW email
+      sentTo: normalizedNew, // this OTP goes to the NEW email
       expiresInSeconds: ttlSeconds,
     };
   }
@@ -205,7 +208,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found');
 
     const { code, ttlSeconds } = await this.otp.issue(user.email);
-    await this.mail.sendOtp(user.email, code, ttlSeconds);
+    await this.mail.sendOtp(user.email, code, ttlSeconds, 'account-deletion');
 
     return { otpRequired: true, sentTo: user.email, expiresInSeconds: ttlSeconds };
   }

@@ -19,6 +19,9 @@ services:
       POSTGRES_USER: ${AUTH_DB_USER}
       POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
       POSTGRES_DB: ${AUTH_DB_NAME}
+    # Published for GUI clients (TablePlus). Host 5442 -> container 5432.
+    ports:
+      - '${AUTH_DB_HOST_PORT:-5442}:5432'
     volumes:
       - auth-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -34,6 +37,9 @@ services:
       POSTGRES_USER: ${ECOM_DB_USER}
       POSTGRES_PASSWORD: ${ECOM_DB_PASSWORD}
       POSTGRES_DB: ${ECOM_DB_NAME}
+    # Published for GUI clients (TablePlus). Host 5443 -> container 5432.
+    ports:
+      - '${ECOM_DB_HOST_PORT:-5443}:5432'
     volumes:
       - ecom-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -64,6 +70,7 @@ services:
       context: ../services/auth-service
     environment:
       NODE_ENV: ${NODE_ENV}
+      APP_NAME: ${APP_NAME}
       AUTH_PORT: ${AUTH_PORT}
       JWT_ISSUER: ${JWT_ISSUER}
       JWT_AUDIENCE: ${JWT_AUDIENCE}

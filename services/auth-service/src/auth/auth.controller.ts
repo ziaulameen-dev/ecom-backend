@@ -15,7 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AuthResult, AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
-import { ChangeEmailDto } from './dto/change-email.dto';
+import { ChangeEmailVerifyDto } from './dto/change-email-verify.dto';
 import { ConfirmOtpDto } from './dto/confirm-otp.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -102,19 +102,22 @@ export class AuthController {
   @Post('email/change')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  // Step 1: email an OTP to the CURRENT address to authorize the change.
+  // Step 1: email an OTP to the CURRENT address (no new email asked for yet).
   @Throttle({ default: { limit: 5, ttl: 900_000 } })
-  changeEmail(@CurrentUser() user: AuthUser, @Body() dto: ChangeEmailDto) {
-    return this.auth.requestEmailChange(user.sub, dto.newEmail);
+  changeEmail(@CurrentUser() user: AuthUser) {
+    return this.auth.requestEmailChange(user.sub);
   }
 
   @Post('email/verify-old')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  // Step 2: confirm the old-email OTP, then email an OTP to the pending address.
+  // Step 2: supply the new email + old-email OTP; on success email an OTP to it.
   @Throttle({ default: { limit: 10, ttl: 900_000 } })
-  verifyOldEmail(@CurrentUser() user: AuthUser, @Body() dto: ConfirmOtpDto) {
-    return this.auth.verifyOldEmailForChange(user.sub, dto.otp);
+  verifyOldEmail(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangeEmailVerifyDto,
+  ) {
+    return this.auth.verifyOldEmailForChange(user.sub, dto.newEmail, dto.otp);
   }
 
   @Post('email/verify-new')
