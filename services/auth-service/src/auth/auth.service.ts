@@ -93,7 +93,8 @@ export class AuthService {
   ): Promise<AuthResult> {
     const result = await this.otp.verify(email, code);
     if (!result.ok) {
-      throw new UnauthorizedException(`Invalid code (${result.reason})`);
+      // Generic message — don't leak whether the code was wrong/expired/absent.
+      throw new UnauthorizedException('Invalid or expired code');
     }
 
     const user =
@@ -158,7 +159,8 @@ export class AuthService {
 
     const result = await this.otp.verify(user.email, code);
     if (!result.ok) {
-      throw new UnauthorizedException(`Invalid code (${result.reason})`);
+      // Generic message — don't leak whether the code was wrong/expired/absent.
+      throw new UnauthorizedException('Invalid or expired code');
     }
 
     await this.users.setPendingEmail(userId, newEmail);
@@ -194,7 +196,8 @@ export class AuthService {
 
     const result = await this.otp.verify(pending, code);
     if (!result.ok) {
-      throw new UnauthorizedException(`Invalid code (${result.reason})`);
+      // Generic message — don't leak whether the code was wrong/expired/absent.
+      throw new UnauthorizedException('Invalid or expired code');
     }
 
     const updated = await this.users.updateEmail(userId, pending);
@@ -227,7 +230,8 @@ export class AuthService {
 
     const result = await this.otp.verify(user.email, code);
     if (!result.ok) {
-      throw new UnauthorizedException(`Invalid code (${result.reason})`);
+      // Generic message — don't leak whether the code was wrong/expired/absent.
+      throw new UnauthorizedException('Invalid or expired code');
     }
 
     await this.users.softDelete(userId);

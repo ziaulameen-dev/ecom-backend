@@ -98,6 +98,7 @@ curl -s -X POST $G/auth/verify-otp -H 'Content-Type: application/json' \
 | `OTP_LENGTH` | `6` | number of digits |
 | `OTP_TTL_SECONDS` | `300` | code lifetime |
 | `OTP_MAX_ATTEMPTS` | `5` | wrong tries before the code is invalidated |
+| `OTP_RESEND_COOLDOWN_SECONDS` | `60` | min gap between codes to the same email (429 if sooner) |
 | `MAILPIT_UI_PORT` | `8028` | Mailpit web UI host port |
 | `MAILPIT_SMTP_PORT` | `1025` | Mailpit SMTP host port |
 | `RATE_LIMIT_ENABLED` | `false` | master switch for per-IP rate limiting (see below) |

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { Reflector } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -22,6 +23,10 @@ async function bootstrap() {
   // Behind nginx, the socket IP is nginx's. Trust the first proxy hop so
   // `req.ip` reflects the real client (X-Forwarded-For) — used for rate limits.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  // Security headers (HSTS, X-Content-Type-Options, etc.). It's a JSON API, so
+  // the default CSP isn't needed and would only complicate the JWKS response.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   // Parse the Cookie header so JwtAuthGuard can read the HttpOnly auth cookie.
   app.use(cookieParser());

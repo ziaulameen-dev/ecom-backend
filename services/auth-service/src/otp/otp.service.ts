@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomInt } from 'crypto';
@@ -29,9 +29,27 @@ export class OtpService {
   async issue(email: string): Promise<{ code: string; ttlSeconds: number }> {
     const length = this.config.get<number>('otp.length')!;
     const ttlSeconds = this.config.get<number>('otp.ttlSeconds')!;
+    const normalized = email.toLowerCase();
+
+    // Per-email resend cooldown: reject if a code was sent too recently.
+    const cooldown = this.config.get<number>('otp.resendCooldownSeconds')!;
+    const existing = await this.otps.findOne({ where: { email: normalized } });
+    if (existing) {
+      const elapsedMs = Date.now() - existing.createdAt.getTime();
+      const remainingMs = cooldown * 1000 - elapsedMs;
+      if (remainingMs > 0) {
+        const retryAfterSeconds = Math.ceil(remainingMs / 1000);
+        throw new HttpException(
+          {
+            message: `Please wait ${retryAfterSeconds}s before requesting another code`,
+            retryAfterSeconds,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
 
     const code = this.generateNumericCode(length);
-    const normalized = email.toLowerCase();
 
     // Replace any existing challenge for this email.
     await this.otps.delete({ email: normalized });

@@ -76,6 +76,12 @@ export default () => ({
     length: parseInt(process.env.OTP_LENGTH ?? '6', 10),
     ttlSeconds: parseInt(process.env.OTP_TTL_SECONDS ?? '300', 10), // 5 min
     maxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5', 10),
+    // Minimum gap between OTP emails to the SAME address — stops resend spam
+    // (per-email, complements the per-IP rate limit).
+    resendCooldownSeconds: parseInt(
+      process.env.OTP_RESEND_COOLDOWN_SECONDS ?? '60',
+      10,
+    ),
   },
 
   // CORS allowlist for browser frontends on other origins. Comma-separated,
