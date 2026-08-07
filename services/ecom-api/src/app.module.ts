@@ -10,6 +10,9 @@ import { Cart } from './cart/cart.entity';
 import { CartModule } from './cart/cart.module';
 import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
+import { OrderItem } from './orders/order-item.entity';
+import { Order } from './orders/order.entity';
+import { OrdersModule } from './orders/orders.module';
 import { ProductPrice } from './products/product-price.entity';
 import { Product } from './products/product.entity';
 import { ProductsModule } from './products/products.module';
@@ -47,6 +50,8 @@ import { ShippingModule } from './shipping/shipping.module';
           Cart,
           CartItem,
           Address,
+          Order,
+          OrderItem,
         ],
         synchronize: config.get<string>('nodeEnv') !== 'production',
         retryAttempts: 10,
@@ -59,6 +64,7 @@ import { ShippingModule } from './shipping/shipping.module';
     ShippingModule,
     CartModule,
     AddressesModule,
+    OrdersModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
 })

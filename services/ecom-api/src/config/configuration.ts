@@ -21,6 +21,13 @@ export default () => ({
     cookieName: process.env.AUTH_COOKIE_NAME ?? 'access_token',
   },
 
+  // Stripe (payments). Secret + webhook secret are server-only.
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
+  },
+
   // Guest cart cookie — identifies an anonymous cart until the user logs in.
   cart: {
     cookieName: process.env.CART_COOKIE_NAME ?? 'cart_id',

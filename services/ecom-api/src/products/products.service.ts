@@ -87,6 +87,21 @@ export class ProductsService implements OnModuleInit {
     return this.products.findOne({ where: { id } });
   }
 
+  /**
+   * Atomically decrement stock only if enough is available. Returns true on
+   * success — the `stock >= qty` guard in SQL prevents overselling under
+   * concurrency (two buyers racing for the last unit).
+   */
+  async decrementStock(productId: string, qty: number): Promise<boolean> {
+    const res = await this.products
+      .createQueryBuilder()
+      .update(Product)
+      .set({ stock: () => `stock - ${qty}` })
+      .where('id = :id AND stock >= :qty', { id: productId, qty })
+      .execute();
+    return (res.affected ?? 0) > 0;
+  }
+
   // ---- Admin: products ------------------------------------------------------
 
   create(dto: CreateProductDto): Promise<Product> {

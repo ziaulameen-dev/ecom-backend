@@ -11,7 +11,9 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
  * nginx forwards /api/* here.
  */
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // `rawBody: true` keeps the raw request buffer (req.rawBody) so the Stripe
+  // webhook can verify its signature against the exact bytes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const config = app.get(ConfigService);
   const port = config.get<number>('port') ?? 3008;
