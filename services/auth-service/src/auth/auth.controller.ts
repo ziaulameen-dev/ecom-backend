@@ -16,9 +16,9 @@ import { Response } from 'express';
 import { AuthResult, AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { ChangeEmailDto } from './dto/change-email.dto';
+import { EmailOtpDto } from './dto/email-otp.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { VerifyEmailChangeDto } from './dto/verify-email-change.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { AuthUser, JwtAuthGuard } from './jwt-auth.guard';
 
@@ -108,18 +108,27 @@ export class AuthController {
     return this.auth.requestEmailChange(user.sub, dto.newEmail);
   }
 
-  @Post('email/verify')
+  @Post('email/verify-old')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  // Step 2: confirm the OTP and switch the email; re-issues the token.
+  // Step 2: confirm the old-email OTP, then email an OTP to the NEW address.
   @Throttle({ default: { limit: 10, ttl: 900_000 } })
-  async verifyEmailChange(
+  verifyOldEmail(@CurrentUser() user: AuthUser, @Body() dto: EmailOtpDto) {
+    return this.auth.verifyOldEmailForChange(user.sub, dto.newEmail, dto.otp);
+  }
+
+  @Post('email/verify-new')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Step 3: confirm the new-email OTP, switch the email, re-issue the token.
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  async verifyNewEmail(
     @CurrentUser() user: AuthUser,
-    @Body() dto: VerifyEmailChangeDto,
+    @Body() dto: EmailOtpDto,
     @Headers(AUTH_SOURCE_HEADER) source: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.verifyEmailChange(
+    const result = await this.auth.verifyNewEmailAndSwitch(
       user.sub,
       dto.newEmail,
       dto.otp,

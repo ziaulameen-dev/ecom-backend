@@ -22,15 +22,19 @@ and shares nothing with the ecom-api except the public JWKS.
 | POST | `/auth/logout` | public | Clear the auth cookie (cookie mode) |
 | GET | `/auth/me` | logged-in | Current user (id, email, name, mobile, roles) |
 | PATCH | `/auth/profile` | logged-in | Update optional profile (`name` / `mobile`) |
-| POST | `/auth/email/change` | logged-in | **Step 1**: email an OTP to the CURRENT address to authorize an email change |
-| POST | `/auth/email/verify` | logged-in | **Step 2**: confirm the OTP and switch to `newEmail`; re-issues the token |
+| POST | `/auth/email/change` | logged-in | **Step 1**: email an OTP to the CURRENT address to authorize a change |
+| POST | `/auth/email/verify-old` | logged-in | **Step 2**: confirm the old-email OTP, then email an OTP to the NEW address |
+| POST | `/auth/email/verify-new` | logged-in | **Step 3**: confirm the new-email OTP, switch to `newEmail`; re-issues the token |
 | GET | `/.well-known/jwks.json` | public | Publish the PUBLIC signing key(s) as a JWKS |
 | GET | `/health` | public | Liveness probe |
 
 The `logged-in` routes are protected by a local `JwtAuthGuard` that verifies the
 token with this service's own key (no JWKS needed) — Bearer or cookie, same as
-the ecom-api. **Email change is confirmed via an OTP sent to the _old_ email**,
-so a stolen token alone can't take over the account.
+the ecom-api. **Email change verifies _both_ inboxes**: an OTP to the old email
+(step-up re-auth, so a stolen token alone can't take over the account) *and* an
+OTP to the new email (so you never set an address the user can't receive at).
+The new-email OTP is only sent after the old one is verified, so the steps can't
+be skipped.
 
 **Auth is passwordless and signup == login:** email → emailed code → token; a
 brand-new email becomes an account when it verifies. See
