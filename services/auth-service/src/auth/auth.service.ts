@@ -194,6 +194,39 @@ export class AuthService {
     return this.issue(updated);
   }
 
+  /**
+   * Step 1 of account deletion: email an OTP to the current address. Deletion
+   * is destructive and irreversible, so we require this step-up confirmation.
+   */
+  async requestAccountDeletion(
+    userId: string,
+  ): Promise<{ otpRequired: true; sentTo: string; expiresInSeconds: number }> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const { code, ttlSeconds } = await this.otp.issue(user.email);
+    await this.mail.sendOtp(user.email, code, ttlSeconds);
+
+    return { otpRequired: true, sentTo: user.email, expiresInSeconds: ttlSeconds };
+  }
+
+  /** Step 2: validate the OTP and soft-delete (deactivate) the account. */
+  async verifyAccountDeletion(
+    userId: string,
+    code: string,
+  ): Promise<{ deleted: true }> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const result = await this.otp.verify(user.email, code);
+    if (!result.ok) {
+      throw new UnauthorizedException(`Invalid code (${result.reason})`);
+    }
+
+    await this.users.softDelete(userId);
+    return { deleted: true };
+  }
+
   /** Guard: the target email must not belong to a different account. */
   private async assertEmailFree(email: string, userId: string): Promise<void> {
     const taken = await this.users.findByEmail(email);

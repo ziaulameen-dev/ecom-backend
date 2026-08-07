@@ -132,6 +132,30 @@ export class AuthController {
     return this.deliver(result, source, res);
   }
 
+  @Post('account/delete')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Step 1: email an OTP to the current address to confirm this destructive act.
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  requestAccountDeletion(@CurrentUser() user: AuthUser) {
+    return this.auth.requestAccountDeletion(user.sub);
+  }
+
+  @Post('account/delete/verify')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Step 2: confirm the OTP, soft-delete (deactivate) the account, end the session.
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  async verifyAccountDeletion(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ConfirmOtpDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.verifyAccountDeletion(user.sub, dto.otp);
+    res.clearCookie(this.config.get<string>('cookie.name')!, { path: '/' });
+    return result;
+  }
+
   /**
    * Deliver the token either as a Bearer token in the body (default) or as an
    * HttpOnly cookie, based on the X-Auth-Source header.

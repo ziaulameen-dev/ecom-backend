@@ -21,16 +21,22 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ---------------------------------------------------------------------------
 CREATE TABLE public.users (
     id            uuid        NOT NULL DEFAULT uuid_generate_v4(),
-    email         varchar     NOT NULL,                       -- login identifier (unique)
+    email         varchar     NOT NULL,                       -- login identifier (unique); a tombstone after soft-delete
     name          varchar         NULL,                       -- optional display name
     mobile        varchar         NULL,                       -- optional phone number
     pending_email varchar         NULL,                       -- target address during an email change; cleared when it completes
     roles         text[]      NOT NULL DEFAULT '{customer}',  -- e.g. {admin} or {customer}
+    deleted_at    timestamp       NULL,                       -- soft-delete (deactivation) timestamp; NULL = active
+    deleted_email varchar         NULL,                       -- original email retained for records after soft-delete
     created_at    timestamp   NOT NULL DEFAULT now(),
 
     CONSTRAINT users_pkey        PRIMARY KEY (id),
     CONSTRAINT users_email_unique UNIQUE (email)
 );
+
+-- Soft-delete frees the real address for re-signup: `email` is set to a unique
+-- tombstone (deleted+<id>@account.invalid) and the original is moved to
+-- `deleted_email`. The row (and any future orders) is retained.
 
 -- Seeded on first boot: admin@example.com  (roles = {admin}; sign in with an OTP)
 

@@ -79,6 +79,22 @@ export class UsersService implements OnModuleInit {
     return this.users.save(user);
   }
 
+  /**
+   * Soft-delete (deactivate) the account: retain the row and its history, but
+   * free the real email for re-signup by moving it to `deletedEmail` and
+   * parking a unique tombstone in `email`. Live PII is cleared.
+   */
+  async softDelete(id: string): Promise<void> {
+    const user = await this.mustFind(id);
+    user.deletedEmail = user.email;
+    user.email = `deleted+${user.id}@account.invalid`; // unique, non-routable
+    user.name = null;
+    user.mobile = null;
+    user.pendingEmail = null;
+    user.deletedAt = new Date();
+    await this.users.save(user);
+  }
+
   private async mustFind(id: string): Promise<User> {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');

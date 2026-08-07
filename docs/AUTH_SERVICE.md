@@ -25,6 +25,8 @@ and shares nothing with the ecom-api except the public JWKS.
 | POST | `/auth/email/change` | logged-in | **Step 1**: save the target as `pending_email` + email an OTP to the CURRENT address |
 | POST | `/auth/email/verify-old` | logged-in | **Step 2**: confirm the old-email OTP `{ otp }`, then email an OTP to the pending address |
 | POST | `/auth/email/verify-new` | logged-in | **Step 3**: confirm the new-email OTP `{ otp }`, switch the email; re-issues the token |
+| POST | `/auth/account/delete` | logged-in | **Step 1**: email an OTP to the current address to confirm deletion |
+| POST | `/auth/account/delete/verify` | logged-in | **Step 2**: confirm the OTP `{ otp }`, soft-delete (deactivate) the account, clear the cookie |
 | GET | `/.well-known/jwks.json` | public | Publish the PUBLIC signing key(s) as a JWKS |
 | GET | `/health` | public | Liveness probe |
 
@@ -36,6 +38,16 @@ OTP to the new email (so you never set an address the user can't receive at).
 The new-email OTP is only sent after the old one is verified, so the steps can't
 be skipped. `newEmail` is supplied once (step 1) and held server-side as
 `pending_email`; the verify steps take only `{ otp }`.
+
+**Account deletion is a soft-delete (deactivation)**, also OTP-confirmed. The
+row is retained (so future order history survives), live PII is cleared, and the
+real email is *freed* — moved to `deleted_email` while `email` becomes a unique
+tombstone — so the same address can sign up again as a fresh, separate account.
+It intentionally **retains PII** (`deleted_email`), so it is deactivation, not
+GDPR erasure; add a scrub step after your retention window if you need true
+erasure. The guard rejects tokens whose account is deleted, so a still-valid
+token can't act on a deactivated account (bearer tokens on the ecom-api still
+work until they expire — the usual stateless-JWT trade-off).
 
 **Auth is passwordless and signup == login:** email → emailed code → token; a
 brand-new email becomes an account when it verifies. See

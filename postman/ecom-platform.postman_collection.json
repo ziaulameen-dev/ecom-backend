@@ -237,6 +237,41 @@
           }
         },
         {
+          "name": "9. Delete account - request OTP (Bearer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/account/delete",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "account", "delete"]
+            },
+            "description": "Step 1: emails an OTP to the current address to confirm this destructive, irreversible action. Then run '2. Read OTP from Mailpit'."
+          }
+        },
+        {
+          "name": "10. Delete account - verify (Bearer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/account/delete/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "account", "delete", "verify"]
+            },
+            "description": "Step 2: confirms the OTP and soft-deletes (deactivates) the account. The email is freed for a fresh signup; old data is retained under deleted_email. Clears the cookie; the current token stops working on auth routes."
+          }
+        },
+        {
           "name": "Cookie mode example (X-Auth-Source: cookie)",
           "request": {
             "method": "POST",

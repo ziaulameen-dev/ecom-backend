@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { KeysService } from '../keys/keys.service';
+import { UsersService } from '../users/users.service';
 
 /** The verified token claims attached to the request. */
 export interface AuthUser {
@@ -16,36 +17,47 @@ export interface AuthUser {
 }
 
 /**
- * Protects the auth-service's own routes (profile / email change). It verifies
- * the JWT locally with KeysService (this service signed it, so it holds the
- * key — no JWKS needed). The token can arrive as a Bearer header or the
- * HttpOnly cookie, forced with `X-Auth-Source` exactly like the ecom-api guard.
+ * Protects the auth-service's own routes (profile / email change / delete). It
+ * verifies the JWT locally with KeysService (this service signed it, so it
+ * holds the key — no JWKS needed). The token can arrive as a Bearer header or
+ * the HttpOnly cookie, forced with `X-Auth-Source` like the ecom-api guard.
+ *
+ * It also rejects tokens for accounts that no longer exist or were deleted, so
+ * a still-valid token can't act on a deactivated account.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly keys: KeysService,
     private readonly config: ConfigService,
+    private readonly users: UsersService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const token = this.extractToken(request);
     if (!token) {
       throw new UnauthorizedException('Missing credentials');
     }
 
+    let claims: AuthUser;
     try {
-      const claims = this.keys.verifyAccessToken(token);
-      (request as Request & { user: AuthUser }).user = {
-        sub: claims.sub,
-        email: claims.email,
-        roles: claims.roles,
-      };
-      return true;
+      claims = this.keys.verifyAccessToken(token);
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
+
+    const user = await this.users.findById(claims.sub);
+    if (!user || user.deletedAt) {
+      throw new UnauthorizedException('Account no longer active');
+    }
+
+    (request as Request & { user: AuthUser }).user = {
+      sub: claims.sub,
+      email: claims.email,
+      roles: claims.roles,
+    };
+    return true;
   }
 
   private extractToken(request: Request): string | null {

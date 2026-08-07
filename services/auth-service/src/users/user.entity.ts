@@ -39,6 +39,15 @@ export class User {
   @Column('text', { array: true, default: '{customer}' })
   roles!: string[];
 
+  // Soft delete (deactivation). When set, the account is gone: `email` holds a
+  // unique tombstone so the REAL address is freed for re-signup, and the
+  // original is preserved in `deletedEmail` for records. See /auth/account/*.
+  @Column({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  deletedAt!: Date | null;
+
+  @Column({ name: 'deleted_email', type: 'varchar', nullable: true })
+  deletedEmail!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 }
