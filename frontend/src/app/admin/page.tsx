@@ -156,7 +156,7 @@ function ReturnsSection() {
   const load = () => get('/api/admin/returns').then(setReturns).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  async function act(id: string, action: 'approve' | 'reject' | 'receive') {
+  async function act(id: string, action: 'approve' | 'reject' | 'receive' | 'refund') {
     await patch(`/api/admin/returns/${id}`, { action });
     await load();
   }
@@ -177,7 +177,10 @@ function ReturnsSection() {
               </>
             )}
             {r.status === 'approved' && (
-              <Button size="sm" onClick={() => act(r.id, 'receive')}>Receive + refund</Button>
+              <Button variant="outline" size="sm" onClick={() => act(r.id, 'receive')}>Mark received</Button>
+            )}
+            {r.status === 'received' && (
+              <Button size="sm" onClick={() => act(r.id, 'refund')}>Refund + restock</Button>
             )}
           </div>
         ))}

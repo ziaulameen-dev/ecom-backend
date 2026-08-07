@@ -64,34 +64,48 @@ export class ReturnsService {
     return this.returns.find({ order: { createdAt: 'DESC' } });
   }
 
-  /** Admin moves a return through its lifecycle. `received` triggers the refund. */
-  async transition(id: string, action: 'approve' | 'reject' | 'receive'): Promise<ReturnRequest> {
+  /**
+   * Admin moves a return through its lifecycle:
+   *   requested → approve → approved   (customer may ship the item back)
+   *             → reject  → rejected
+   *   approved  → receive → received   (the goods have physically arrived)
+   *   received  → refund  → refunded   (after inspection: money back + restock)
+   *
+   * Money and stock only move on the final `refund` step — after the product
+   * is confirmed received by the admin.
+   */
+  async transition(
+    id: string,
+    action: 'approve' | 'reject' | 'receive' | 'refund',
+  ): Promise<ReturnRequest> {
     const rr = await this.returns.findOne({ where: { id } });
     if (!rr) throw new NotFoundException('Return not found');
 
     const allowed: Record<ReturnStatus, ReturnStatus[]> = {
       requested: ['approved', 'rejected'],
       approved: ['received'],
+      received: ['refunded'],
       rejected: [],
-      received: [],
       refunded: [],
     };
     const target: Record<string, ReturnStatus> = {
       approve: 'approved',
       reject: 'rejected',
       receive: 'received',
+      refund: 'refunded',
     };
     const next = target[action];
     if (!allowed[rr.status].includes(next)) {
       throw new BadRequestException(`Cannot ${action} a ${rr.status} return`);
     }
 
-    if (next !== 'received') {
+    // approve / reject / receive are pure status changes (no money/stock yet).
+    if (next !== 'refunded') {
       rr.status = next;
       return this.returns.save(rr);
     }
 
-    // Received → refund the returned items' value + restore their stock.
+    // refund: only now (goods received + inspected) do we return money + stock.
     const order = await this.orders.loadOwned(rr.orderId, null);
     let refundMinor = 0;
     for (const line of rr.items) {
