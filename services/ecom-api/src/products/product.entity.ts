@@ -2,10 +2,17 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { ProductPrice } from './product-price.entity';
 
-/** A product, persisted in the ecom-api's OWN Postgres database. */
+/**
+ * A product, persisted in the ecom-api's OWN Postgres database.
+ *
+ * Price is NOT on the product — it's per country (see ProductPrice), because
+ * this is a global store where admins set prices per market/currency.
+ */
 @Entity('products')
 export class Product {
   @PrimaryGeneratedColumn('uuid')
@@ -14,12 +21,11 @@ export class Product {
   @Column()
   name!: string;
 
-  // Stored in the smallest currency unit (e.g. cents) to avoid float rounding.
-  @Column('int')
-  priceCents!: number;
-
   @Column({ default: 0 })
   stock!: number;
+
+  @OneToMany(() => ProductPrice, (p) => p.product)
+  prices!: ProductPrice[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

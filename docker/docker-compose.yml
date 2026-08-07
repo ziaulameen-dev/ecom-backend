@@ -166,6 +166,23 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # ---- ngrok (dev only: public HTTPS tunnel to the gateway for webhooks) -----
+  # Not started by `npm run up` (it's under the "tunnel" profile). Start with
+  # `npm run tunnel`. It exposes https://$NGROK_DOMAIN -> nginx:3008, so Stripe
+  # can reach POST /api/payments/webhook. Inspector UI on host 4041.
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles: ['tunnel']
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command: http --url=https://${NGROK_DOMAIN} nginx:3008
+    ports:
+      - '4041:4040'
+    depends_on:
+      nginx:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   auth-db-data:
   ecom-db-data:

@@ -5,9 +5,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CsrfGuard } from './common/guards/csrf.guard';
 import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
+import { ProductPrice } from './products/product-price.entity';
 import { Product } from './products/product.entity';
 import { ProductsModule } from './products/products.module';
 import { ProfileModule } from './profile/profile.module';
+import { ShippingRate } from './shipping/shipping-rate.entity';
+import { ShippingModule } from './shipping/shipping.module';
 
 /**
  * Root module for the ecom-api.
@@ -32,7 +35,7 @@ import { ProfileModule } from './profile/profile.module';
         username: config.get<string>('db.username'),
         password: config.get<string>('db.password'),
         database: config.get<string>('db.database'),
-        entities: [Product],
+        entities: [Product, ProductPrice, ShippingRate],
         synchronize: config.get<string>('nodeEnv') !== 'production',
         retryAttempts: 10,
         retryDelay: 3000,
@@ -41,6 +44,7 @@ import { ProfileModule } from './profile/profile.module';
     HealthModule,
     ProductsModule,
     ProfileModule,
+    ShippingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
 })

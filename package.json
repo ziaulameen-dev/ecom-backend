@@ -9,6 +9,7 @@
     "down:volumes": "docker compose --env-file .env -f docker/docker-compose.yml down -v",
     "logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f",
     "ps": "docker compose --env-file .env -f docker/docker-compose.yml ps",
-    "build": "docker compose --env-file .env -f docker/docker-compose.yml build"
+    "build": "docker compose --env-file .env -f docker/docker-compose.yml build",
+    "tunnel": "docker compose --env-file .env -f docker/docker-compose.yml --profile tunnel up -d ngrok"
   }
 }
