@@ -2,7 +2,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { RefreshToken } from './refresh-token.entity';
-import { RefreshService } from './refresh.service';
+import { RefreshReuseError, RefreshService } from './refresh.service';
 
 function makeRepo(): jest.Mocked<Repository<RefreshToken>> {
   return {
@@ -62,13 +62,14 @@ describe('RefreshService', () => {
       );
     });
 
-    it('rejects a revoked token', async () => {
+    it('flags reuse of an already-rotated (revoked) token', async () => {
       repo.findOne.mockResolvedValue({
+        userId: 'user-1',
         revokedAt: new Date(),
         expiresAt: new Date(Date.now() + 1000),
       } as RefreshToken);
       await expect(service.rotate('x')).rejects.toBeInstanceOf(
-        UnauthorizedException,
+        RefreshReuseError,
       );
     });
 

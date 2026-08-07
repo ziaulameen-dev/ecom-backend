@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
+import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { AuthResult, AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
@@ -230,7 +231,17 @@ export class AuthController {
           expires: result.refreshExpiresAt,
         },
       );
-      return { user: result.user };
+      // CSRF double-submit token: readable by JS (NOT httpOnly) so the client
+      // can echo it in the X-CSRF-Token header on state-changing requests.
+      const csrfToken = randomBytes(32).toString('hex');
+      res.cookie(this.config.get<string>('csrf.cookieName')!, csrfToken, {
+        httpOnly: false,
+        sameSite,
+        secure,
+        path: '/',
+        expires: result.refreshExpiresAt,
+      });
+      return { user: result.user, csrfToken };
     }
     return {
       accessToken: result.accessToken,
@@ -254,5 +265,6 @@ export class AuthController {
     res.clearCookie(this.config.get<string>('refresh.cookieName')!, {
       path: '/',
     });
+    res.clearCookie(this.config.get<string>('csrf.cookieName')!, { path: '/' });
   }
 }

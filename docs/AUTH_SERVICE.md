@@ -67,7 +67,9 @@ brand-new email becomes an account when it verifies. See
 access token (`ACCESS_TOKEN_TTL`, default 15m) plus a long-lived **refresh
 token** (`REFRESH_TOKEN_TTL_DAYS`, default 30d). Refresh tokens are opaque,
 stored hashed, **single-use (rotated on every `/auth/refresh`)**, and revocable
-(`/auth/logout`, `/auth/logout-all`, and automatically on account deletion). The
+(`/auth/logout`, `/auth/logout-all`, and automatically on account deletion).
+Replaying an already-rotated refresh token is treated as **theft** — the user's
+whole session family is revoked and it's audited (`refresh_reuse`). The
 RSA **signing key persists** across restarts when `JWT_PRIVATE_KEY_BASE64` is
 set (otherwise an ephemeral key is generated and all tokens break on restart).
 

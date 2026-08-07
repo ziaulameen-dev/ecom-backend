@@ -13,6 +13,17 @@ export interface IssuedRefreshToken {
 }
 
 /**
+ * Thrown when an ALREADY-ROTATED (revoked) refresh token is presented again.
+ * With single-use rotation this means the token leaked and is being replayed —
+ * a theft signal. The caller reacts by revoking the user's whole session family.
+ */
+export class RefreshReuseError extends Error {
+  constructor(readonly userId: string) {
+    super('Refresh token reuse detected');
+  }
+}
+
+/**
  * Issues, rotates, and revokes refresh tokens. Tokens are opaque random
  * strings; only their hash is stored. Rotation (single-use) means every
  * successful refresh revokes the presented token and mints a new one, so a
@@ -48,8 +59,13 @@ export class RefreshService {
     const row = await this.tokens.findOne({
       where: { tokenHash: this.hash(token) },
     });
-    if (!row || row.revokedAt || row.expiresAt.getTime() < Date.now()) {
+    if (!row || row.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    // Already rotated once -> this is a replay of a used token = theft signal.
+    if (row.revokedAt) {
+      throw new RefreshReuseError(row.userId);
     }
 
     row.revokedAt = new Date();

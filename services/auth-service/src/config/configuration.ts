@@ -106,6 +106,14 @@ export default () => ({
       .filter(Boolean),
   },
 
+  // CSRF (double-submit cookie) for COOKIE-mode clients. On login we set a
+  // readable csrf cookie; state-changing requests must echo it in a header.
+  // Bearer clients have no ambient cookie, so they're exempt.
+  csrf: {
+    cookieName: process.env.CSRF_COOKIE_NAME ?? 'csrf_token',
+    headerName: (process.env.CSRF_HEADER_NAME ?? 'x-csrf-token').toLowerCase(),
+  },
+
   // Redis — shared session denylist so logout/-all/delete instantly invalidate
   // access tokens across BOTH services (they check it per request).
   redis: {

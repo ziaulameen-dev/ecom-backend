@@ -8,6 +8,7 @@ import configuration from './config/configuration';
 import { AuditLog } from './audit/audit-log.entity';
 import { AuthModule } from './auth/auth.module';
 import { ConditionalThrottlerGuard } from './common/guards/conditional-throttler.guard';
+import { CsrfGuard } from './common/guards/csrf.guard';
 import { HealthModule } from './health/health.module';
 import { JwksModule } from './jwks/jwks.module';
 import { KeysModule } from './keys/keys.module';
@@ -58,6 +59,9 @@ import { User } from './users/user.entity';
     HealthModule,
     JobsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ConditionalThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ConditionalThrottlerGuard },
+    { provide: APP_GUARD, useClass: CsrfGuard },
+  ],
 })
 export class AppModule {}

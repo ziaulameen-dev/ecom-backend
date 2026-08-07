@@ -21,6 +21,14 @@ export default () => ({
     cookieName: process.env.AUTH_COOKIE_NAME ?? 'access_token',
   },
 
+  // CSRF (double-submit cookie). The auth-service sets the csrf cookie on
+  // login; this API just enforces it on state-changing cookie requests. Names
+  // must match the auth-service.
+  csrf: {
+    cookieName: process.env.CSRF_COOKIE_NAME ?? 'csrf_token',
+    headerName: (process.env.CSRF_HEADER_NAME ?? 'x-csrf-token').toLowerCase(),
+  },
+
   // Redis — shared session denylist written by the auth-service. This API
   // checks it per request so revoked (logged-out) tokens are rejected at once.
   redis: {

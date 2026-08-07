@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CsrfGuard } from './common/guards/csrf.guard';
 import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
 import { Product } from './products/product.entity';
@@ -40,5 +42,6 @@ import { ProfileModule } from './profile/profile.module';
     ProductsModule,
     ProfileModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
 })
 export class AppModule {}

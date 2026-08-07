@@ -11,7 +11,7 @@ import { KeysService } from '../keys/keys.service';
 import { resolveLocale } from '../mail/i18n';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from '../otp/otp.service';
-import { RefreshService } from '../refresh/refresh.service';
+import { RefreshReuseError, RefreshService } from '../refresh/refresh.service';
 import { User } from '../users/user.entity';
 import { UserProfile, UsersService } from '../users/users.service';
 
@@ -302,7 +302,23 @@ export class AuthService {
    * Rejects if the session is invalid or the account is gone/deleted.
    */
   async refreshSession(refreshToken: string): Promise<AuthResult> {
-    const { userId, issued } = await this.refresh.rotate(refreshToken);
+    let userId: string;
+    let issued: Awaited<ReturnType<RefreshService['rotate']>>['issued'];
+    try {
+      ({ userId, issued } = await this.refresh.rotate(refreshToken));
+    } catch (err) {
+      // A replayed (already-rotated) refresh token means it leaked. Kill EVERY
+      // session for that user so the attacker's rotated token is useless too.
+      if (err instanceof RefreshReuseError) {
+        await this.revokeAllSessions(err.userId);
+        await this.audit.record(err.userId, 'refresh_reuse');
+        throw new UnauthorizedException(
+          'Session revoked for security — please sign in again',
+        );
+      }
+      throw err;
+    }
+
     const user = await this.users.findById(userId);
     if (!user || user.deletedAt) {
       throw new UnauthorizedException('Account no longer active');

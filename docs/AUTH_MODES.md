@@ -67,14 +67,33 @@ JWKS) + `iss` + `aud` + `exp`.
 | | Bearer (localStorage/mobile) | Cookie (HttpOnly) |
 |---|---|---|
 | **XSS** (malicious JS reads token) | ⚠️ exposed if stored in JS-reachable storage | ✅ JS cannot read an HttpOnly cookie |
-| **CSRF** (auto-sent on requests) | ✅ not auto-sent; nothing to forge | ⚠️ auto-sent → needs `SameSite` and/or CSRF tokens |
+| **CSRF** (auto-sent on requests) | ✅ not auto-sent; nothing to forge | ✅ `SameSite=Lax` + double-submit CSRF token (see below) |
 | **Cross-origin / mobile** | ✅ trivial (just a header) | ⚠️ needs `credentials`, `SameSite=None; Secure` cross-site |
 
 Rules of thumb:
 - **Browser SPA on the same origin** → cookie mode (this platform is one origin
-  via nginx, and uses `SameSite=Lax` as a CSRF baseline; add CSRF tokens for
-  state-changing routes in production).
+  via nginx, uses `SameSite=Lax`, and enforces CSRF tokens — see below).
 - **Mobile app / service-to-service** → bearer mode.
+
+## CSRF protection (cookie mode)
+
+Cookies are auto-sent by the browser, so cookie-authenticated **state-changing**
+requests are CSRF-protected with a **double-submit token**:
+
+- On a cookie-mode login the server sets a readable (non-HttpOnly) `csrf_token`
+  cookie and also returns `csrfToken` in the body.
+- The client must echo it in an **`X-CSRF-Token`** header on every non-GET
+  request. Both services compare header vs cookie and reject a mismatch (`403`).
+- The same-origin policy stops a malicious site from reading the cookie, so it
+  can't forge the header. **Bearer** clients carry no csrf cookie and are exempt
+  (an attacker can't set an `Authorization` header cross-site anyway).
+
+```bash
+# cookie-mode change: must send X-CSRF-Token (value from the csrf_token cookie)
+curl -b cookies.txt -X PATCH http://localhost:3008/auth/profile \
+  -H 'Content-Type: application/json' -H "X-CSRF-Token: $CSRF" \
+  -d '{"name":"New Name"}'
+```
 
 ## Configuration
 

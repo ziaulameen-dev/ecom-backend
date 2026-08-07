@@ -8,7 +8,8 @@ export type AuditAction =
   | 'login'
   | 'email_changed'
   | 'account_deleted'
-  | 'logout_all';
+  | 'logout_all'
+  | 'refresh_reuse';
 
 /**
  * Writes append-only audit records. Failures are swallowed (logged) so that an
