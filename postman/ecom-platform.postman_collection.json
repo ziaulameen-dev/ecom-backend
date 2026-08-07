@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Ecom Platform (auth + ecom-api via nginx)",
-    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nThis collection uses BEARER tokens throughout (token in the JSON body, saved to {{accessToken}}). Cookie delivery is shown ONCE — see 'Cookie mode example (X-Auth-Source: cookie)' — add that header to any token-issuing request to get an HttpOnly cookie instead.\n\nRun order: 1. Request OTP -> 2. Read OTP from Mailpit -> 3. Verify OTP (bearer) -> 4-7 account management -> Ecom API (Profile / products).\n\nAuthenticated account routes (Bearer): GET /auth/me, PATCH /auth/profile, and a 3-step email change: POST /auth/email/change (OTP to OLD email) -> verify-old {newEmail, otp} (OTP to NEW email) -> verify-new {otp} (switch).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
+    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nThis collection uses BEARER tokens throughout (token in the JSON body, saved to {{accessToken}}). Bearer requests are CSRF-EXEMPT, so no X-CSRF-Token is needed anywhere here. Cookie delivery is shown ONCE — see the 'Cookie mode example' — where CSRF DOES apply: cookie-mode POST/PATCH/DELETE must send `X-CSRF-Token: {{csrfToken}}` (that request saves it) or you get 403.\n\nRun order: 1. Request OTP -> 2. Read OTP from Mailpit -> 3. Verify OTP (bearer) -> 4-7 account management -> Ecom API (Profile / products).\n\nAuthenticated account routes (Bearer): GET /auth/me, PATCH /auth/profile, and a 3-step email change: POST /auth/email/change (OTP to OLD email) -> verify-old {newEmail, otp} (OTP to NEW email) -> verify-new {otp} (switch).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,7 +10,8 @@
     { "key": "email", "value": "admin@example.com", "type": "string" },
     { "key": "accessToken", "value": "", "type": "string" },
     { "key": "otp", "value": "", "type": "string" },
-    { "key": "refreshToken", "value": "", "type": "string" }
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "csrfToken", "value": "", "type": "string" }
   ],
   "item": [
     {
@@ -270,7 +271,23 @@
           }
         },
         {
-          "name": "Cookie mode example (X-Auth-Source: cookie)",
+          "name": "Cookie mode example (X-Auth-Source: cookie) — saves CSRF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// In cookie mode the server sets a readable csrf_token cookie AND",
+                  "// returns csrfToken in the body. Save it so cookie-mode state-changing",
+                  "// requests can send it as the X-CSRF-Token header.",
+                  "const json = pm.response.json();",
+                  "const csrf = (json.data && json.data.csrfToken) || pm.cookies.get('csrf_token');",
+                  "if (csrf) pm.collectionVariables.set('csrfToken', csrf);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -286,7 +303,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["auth", "verify-otp"]
             },
-            "description": "THE single cookie example. Everything else here uses Bearer. To use cookie delivery instead, add the header `X-Auth-Source: cookie` to any token-issuing request (verify-otp or email/verify-new): the server sets an HttpOnly cookie and omits the body token. Postman then auto-sends that cookie on later requests, so you can drop the Authorization header. (Re-run Request OTP + Read OTP first; each OTP is single-use.)"
+            "description": "THE single cookie example. Everything else here uses Bearer (which is CSRF-exempt). To use cookie delivery, add `X-Auth-Source: cookie` to any token-issuing request: the server sets HttpOnly access/refresh cookies + a readable csrf_token cookie (also returned as data.csrfToken). Postman auto-sends the cookies afterward, so you can drop the Authorization header.\n\nCSRF: for cookie-mode STATE-CHANGING calls (POST/PATCH/DELETE) you MUST also send the header `X-CSRF-Token: {{csrfToken}}` (this request's test script saves it). GET is exempt; bearer requests are exempt. Without it you get 403. (Re-run Request OTP + Read OTP first; each OTP is single-use.)"
           }
         },
         {
