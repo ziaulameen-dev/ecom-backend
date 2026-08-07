@@ -3,6 +3,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CsrfGuard } from './common/guards/csrf.guard';
+import { CartItem } from './cart/cart-item.entity';
+import { Cart } from './cart/cart.entity';
+import { CartModule } from './cart/cart.module';
 import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
 import { ProductPrice } from './products/product-price.entity';
@@ -35,7 +38,7 @@ import { ShippingModule } from './shipping/shipping.module';
         username: config.get<string>('db.username'),
         password: config.get<string>('db.password'),
         database: config.get<string>('db.database'),
-        entities: [Product, ProductPrice, ShippingRate],
+        entities: [Product, ProductPrice, ShippingRate, Cart, CartItem],
         synchronize: config.get<string>('nodeEnv') !== 'production',
         retryAttempts: 10,
         retryDelay: 3000,
@@ -45,6 +48,7 @@ import { ShippingModule } from './shipping/shipping.module';
     ProductsModule,
     ProfileModule,
     ShippingModule,
+    CartModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
 })

@@ -82,6 +82,11 @@ export class ProductsService implements OnModuleInit {
     });
   }
 
+  /** The raw product row (used by cart/checkout for name + stock). */
+  findEntity(id: string): Promise<Product | null> {
+    return this.products.findOne({ where: { id } });
+  }
+
   // ---- Admin: products ------------------------------------------------------
 
   create(dto: CreateProductDto): Promise<Product> {

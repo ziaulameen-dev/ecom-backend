@@ -21,6 +21,18 @@ export default () => ({
     cookieName: process.env.AUTH_COOKIE_NAME ?? 'access_token',
   },
 
+  // Guest cart cookie — identifies an anonymous cart until the user logs in.
+  cart: {
+    cookieName: process.env.CART_COOKIE_NAME ?? 'cart_id',
+    sameSite: (process.env.AUTH_COOKIE_SAMESITE ?? 'lax') as
+      | 'lax'
+      | 'strict'
+      | 'none',
+    secure: (process.env.NODE_ENV ?? 'development') === 'production',
+    // Guests keep a cart for a while (ms). 30 days.
+    maxAgeMs: parseInt(process.env.CART_COOKIE_MAX_AGE_MS ?? '2592000000', 10),
+  },
+
   // CSRF (double-submit cookie). The auth-service sets the csrf cookie on
   // login; this API just enforces it on state-changing cookie requests. Names
   // must match the auth-service.

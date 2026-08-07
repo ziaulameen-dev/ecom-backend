@@ -1,0 +1,182 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ProductsService } from '../products/products.service';
+import { CartItem } from './cart-item.entity';
+import { Cart } from './cart.entity';
+
+/** A cart line resolved for the cart's country. */
+export interface CartLineView {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitAmountMinor: number | null; // null if not priced in this country
+  lineTotalMinor: number;
+  available: boolean; // priced in this country
+  stock: number;
+}
+
+/** A cart shaped for display / checkout. */
+export interface CartView {
+  id: string;
+  country: string;
+  currency: string | null;
+  items: CartLineView[];
+  itemCount: number;
+  subtotalMinor: number;
+}
+
+/** Who is asking for a cart. */
+export interface CartOwner {
+  userId: string | null;
+  cookieCartId: string | null;
+}
+
+@Injectable()
+export class CartService {
+  constructor(
+    @InjectRepository(Cart) private readonly carts: Repository<Cart>,
+    @InjectRepository(CartItem) private readonly items: Repository<CartItem>,
+    private readonly products: ProductsService,
+  ) {}
+
+  /**
+   * Find the caller's cart (a logged-in user's cart by userId, else the guest
+   * cart from the cookie), creating one if needed. Returns the cart and whether
+   * it was just created (so the controller can set the cookie).
+   */
+  async resolveOrCreate(
+    owner: CartOwner,
+    country?: string,
+  ): Promise<{ cart: Cart; created: boolean }> {
+    if (owner.userId) {
+      const existing = await this.carts.findOne({
+        where: { userId: owner.userId },
+      });
+      if (existing) return { cart: existing, created: false };
+      return { cart: await this.create(owner.userId, country), created: true };
+    }
+
+    if (owner.cookieCartId) {
+      const guest = await this.carts.findOne({
+        where: { id: owner.cookieCartId, userId: null as never },
+      });
+      if (guest) return { cart: guest, created: false };
+    }
+    return { cart: await this.create(null, country), created: true };
+  }
+
+  /** Change the cart's country (re-prices everything on next view). */
+  async setCountry(cart: Cart, country: string): Promise<Cart> {
+    cart.country = country.toUpperCase();
+    return this.carts.save(cart);
+  }
+
+  async addItem(cart: Cart, productId: string, quantity: number): Promise<void> {
+    const product = await this.products.findEntity(productId);
+    if (!product) throw new NotFoundException('Product not found');
+    const price = await this.products.priceFor(productId, cart.country);
+    if (!price) {
+      throw new BadRequestException(
+        `Product is not available in ${cart.country}`,
+      );
+    }
+
+    const existing = await this.items.findOne({
+      where: { cartId: cart.id, productId },
+    });
+    const desired = (existing?.quantity ?? 0) + quantity;
+    const capped = Math.min(Math.max(desired, 0), product.stock);
+    await this.upsertQuantity(cart, productId, capped, existing ?? undefined);
+  }
+
+  async setItemQuantity(
+    cart: Cart,
+    productId: string,
+    quantity: number,
+  ): Promise<void> {
+    const existing = await this.items.findOne({
+      where: { cartId: cart.id, productId },
+    });
+    if (!existing && quantity <= 0) return;
+    const product = await this.products.findEntity(productId);
+    if (!product) throw new NotFoundException('Product not found');
+    const capped = Math.min(Math.max(quantity, 0), product.stock);
+    await this.upsertQuantity(cart, productId, capped, existing ?? undefined);
+  }
+
+  async removeItem(cart: Cart, productId: string): Promise<void> {
+    await this.items.delete({ cartId: cart.id, productId });
+  }
+
+  async clear(cart: Cart): Promise<void> {
+    await this.items.delete({ cartId: cart.id });
+  }
+
+  /** Build the priced view of a cart for its country. */
+  async view(cart: Cart): Promise<CartView> {
+    const rows = await this.items.find({
+      where: { cartId: cart.id },
+      order: { id: 'ASC' },
+    });
+
+    const lines: CartLineView[] = [];
+    let subtotal = 0;
+    let currency: string | null = null;
+
+    for (const row of rows) {
+      const product = await this.products.findEntity(row.productId);
+      const price = await this.products.priceFor(row.productId, cart.country);
+      if (price && !currency) currency = price.currency;
+      const unit = price?.amountMinor ?? null;
+      const lineTotal = unit != null ? unit * row.quantity : 0;
+      subtotal += lineTotal;
+      lines.push({
+        productId: row.productId,
+        name: product?.name ?? '(removed)',
+        quantity: row.quantity,
+        unitAmountMinor: unit,
+        lineTotalMinor: lineTotal,
+        available: price != null && product != null,
+        stock: product?.stock ?? 0,
+      });
+    }
+
+    return {
+      id: cart.id,
+      country: cart.country,
+      currency,
+      items: lines,
+      itemCount: lines.reduce((n, l) => n + l.quantity, 0),
+      subtotalMinor: subtotal,
+    };
+  }
+
+  private create(userId: string | null, country?: string): Promise<Cart> {
+    return this.carts.save(
+      this.carts.create({
+        userId,
+        country: (country ?? 'US').toUpperCase(),
+      }),
+    );
+  }
+
+  private async upsertQuantity(
+    cart: Cart,
+    productId: string,
+    quantity: number,
+    existing?: CartItem,
+  ): Promise<void> {
+    if (quantity <= 0) {
+      if (existing) await this.items.delete({ id: existing.id });
+      return;
+    }
+    const row = existing ?? this.items.create({ cartId: cart.id, productId });
+    row.quantity = quantity;
+    await this.items.save(row);
+  }
+}
