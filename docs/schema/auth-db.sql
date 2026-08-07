@@ -20,12 +20,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- optional profile captured then (country lives on the shipping address).
 -- ---------------------------------------------------------------------------
 CREATE TABLE public.users (
-    id         uuid        NOT NULL DEFAULT uuid_generate_v4(),
-    email      varchar     NOT NULL,                       -- login identifier (unique)
-    name       varchar         NULL,                       -- optional display name
-    mobile     varchar         NULL,                       -- optional phone number
-    roles      text[]      NOT NULL DEFAULT '{customer}',  -- e.g. {admin} or {customer}
-    created_at timestamp   NOT NULL DEFAULT now(),
+    id            uuid        NOT NULL DEFAULT uuid_generate_v4(),
+    email         varchar     NOT NULL,                       -- login identifier (unique)
+    name          varchar         NULL,                       -- optional display name
+    mobile        varchar         NULL,                       -- optional phone number
+    pending_email varchar         NULL,                       -- target address during an email change; cleared when it completes
+    roles         text[]      NOT NULL DEFAULT '{customer}',  -- e.g. {admin} or {customer}
+    created_at    timestamp   NOT NULL DEFAULT now(),
 
     CONSTRAINT users_pkey        PRIMARY KEY (id),
     CONSTRAINT users_email_unique UNIQUE (email)

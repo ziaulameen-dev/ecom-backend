@@ -193,14 +193,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"newEmail\": \"admin-new@example.com\",\n  \"otp\": \"{{otp}}\"\n}"
+              "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/email/verify-old",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "email", "verify-old"]
             },
-            "description": "Step 2: confirms the OTP sent to the OLD email (run '2. Read OTP from Mailpit' first to load {{otp}}). On success it emails a SECOND OTP to the NEW address. No switch yet."
+            "description": "Step 2: confirms the OTP sent to the OLD email (run '2. Read OTP from Mailpit' first to load {{otp}}). Only the OTP is needed — newEmail was saved server-side at step 1. On success it emails a SECOND OTP to the NEW address. No switch yet."
           }
         },
         {
@@ -226,7 +226,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"newEmail\": \"admin-new@example.com\",\n  \"otp\": \"{{otp}}\"\n}"
+              "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/email/verify-new",

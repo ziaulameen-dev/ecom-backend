@@ -30,6 +30,11 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   mobile!: string | null;
 
+  // Set while an email change is in progress (the target address). Cleared
+  // once the change completes. See the /auth/email/* flow.
+  @Column({ name: 'pending_email', type: 'varchar', nullable: true })
+  pendingEmail!: string | null;
+
   // Stored as a Postgres text[] column, e.g. {admin,customer}.
   @Column('text', { array: true, default: '{customer}' })
   roles!: string[];

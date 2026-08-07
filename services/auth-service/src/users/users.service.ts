@@ -56,9 +56,16 @@ export class UsersService implements OnModuleInit {
     return this.users.save(user);
   }
 
+  /** Record the target address while an email change is in progress. */
+  async setPendingEmail(id: string, pendingEmail: string | null): Promise<User> {
+    const user = await this.mustFind(id);
+    user.pendingEmail = pendingEmail ? pendingEmail.toLowerCase() : null;
+    return this.users.save(user);
+  }
+
   /**
-   * Change the account's email (its login identifier). Rejects if the new
-   * address is already taken by another account.
+   * Change the account's email (its login identifier) and clear any pending
+   * change. Rejects if the new address is already taken by another account.
    */
   async updateEmail(id: string, newEmail: string): Promise<User> {
     const normalized = newEmail.toLowerCase();
@@ -68,6 +75,7 @@ export class UsersService implements OnModuleInit {
     }
     const user = await this.mustFind(id);
     user.email = normalized;
+    user.pendingEmail = null;
     return this.users.save(user);
   }
 

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -127,6 +128,9 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found');
     await this.assertEmailFree(newEmail, userId);
 
+    // Remember the target so later steps don't need to resend it.
+    await this.users.setPendingEmail(userId, newEmail);
+
     const { code, ttlSeconds } = await this.otp.issue(user.email);
     await this.mail.sendOtp(user.email, code, ttlSeconds);
 
@@ -140,54 +144,53 @@ export class AuthService {
 
   /**
    * Step 2: validate the OTP sent to the OLD email, then email a SECOND OTP to
-   * the NEW address to prove the user owns it too. The email is not switched
-   * yet. Because the new-email OTP is only sent here, step 3 cannot run before
-   * this step succeeds.
+   * the pending NEW address to prove the user owns it too. The email is not
+   * switched yet. Because the new-email OTP is only sent here, step 3 cannot
+   * run before this step succeeds.
    */
   async verifyOldEmailForChange(
     userId: string,
-    newEmail: string,
     code: string,
   ): Promise<EmailChangeChallenge> {
     const user = await this.users.findById(userId);
     if (!user) throw new UnauthorizedException('User not found');
-    await this.assertEmailFree(newEmail, userId);
+    const pending = this.requirePendingEmail(user.pendingEmail);
+    await this.assertEmailFree(pending, userId);
 
     const result = await this.otp.verify(user.email, code);
     if (!result.ok) {
       throw new UnauthorizedException(`Invalid code (${result.reason})`);
     }
 
-    const normalizedNew = newEmail.toLowerCase();
-    const { code: newCode, ttlSeconds } = await this.otp.issue(normalizedNew);
-    await this.mail.sendOtp(normalizedNew, newCode, ttlSeconds);
+    const { code: newCode, ttlSeconds } = await this.otp.issue(pending);
+    await this.mail.sendOtp(pending, newCode, ttlSeconds);
 
     return {
       otpRequired: true,
       step: 'verify-new',
-      sentTo: normalizedNew, // this OTP goes to the NEW email
+      sentTo: pending, // this OTP goes to the NEW email
       expiresInSeconds: ttlSeconds,
     };
   }
 
   /**
-   * Step 3: validate the OTP sent to the NEW email and finally switch the
-   * address. A fresh token is issued so its `email` claim matches.
+   * Step 3: validate the OTP sent to the pending NEW email and finally switch
+   * the address. A fresh token is issued so its `email` claim matches.
    */
   async verifyNewEmailAndSwitch(
     userId: string,
-    newEmail: string,
     code: string,
   ): Promise<AuthResult> {
     const user = await this.users.findById(userId);
     if (!user) throw new UnauthorizedException('User not found');
+    const pending = this.requirePendingEmail(user.pendingEmail);
 
-    const result = await this.otp.verify(newEmail, code);
+    const result = await this.otp.verify(pending, code);
     if (!result.ok) {
       throw new UnauthorizedException(`Invalid code (${result.reason})`);
     }
 
-    const updated = await this.users.updateEmail(userId, newEmail);
+    const updated = await this.users.updateEmail(userId, pending);
     return this.issue(updated);
   }
 
@@ -197,6 +200,14 @@ export class AuthService {
     if (taken && taken.id !== userId) {
       throw new ConflictException('Email already in use');
     }
+  }
+
+  /** Guard: there must be an email change in progress. */
+  private requirePendingEmail(pendingEmail: string | null): string {
+    if (!pendingEmail) {
+      throw new BadRequestException('No email change in progress');
+    }
+    return pendingEmail;
   }
 
   /** Mint a token for an authenticated user and shape the response. */
