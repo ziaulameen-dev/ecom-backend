@@ -5,14 +5,16 @@ import { OtpModule } from '../otp/otp.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 /**
- * Wires authentication: users (credentials), keys (signing), otp (login codes),
- * and mail (delivering the OTP).
+ * Wires authentication: users (accounts), keys (sign + verify), otp (codes),
+ * and mail (delivering the OTP). JwtAuthGuard protects the account-management
+ * routes (it verifies tokens locally via KeysService).
  */
 @Module({
   imports: [UsersModule, KeysModule, OtpModule, MailModule],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, JwtAuthGuard],
 })
 export class AuthModule {}

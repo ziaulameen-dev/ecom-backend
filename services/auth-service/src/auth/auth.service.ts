@@ -1,20 +1,28 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { KeysService } from '../keys/keys.service';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from '../otp/otp.service';
 import { User } from '../users/user.entity';
 import { UserProfile, UsersService } from '../users/users.service';
 
+/** The user shape returned to clients (never includes anything secret). */
+export interface UserView {
+  id: string;
+  email: string;
+  name: string | null;
+  mobile: string | null;
+  roles: string[];
+}
+
 /** What the token-issuing path returns. */
 export interface AuthResult {
   accessToken: string;
   tokenType: 'Bearer';
-  user: {
-    id: string;
-    email: string;
-    name: string | null;
-    roles: string[];
-  };
+  user: UserView;
 }
 
 /** What requesting an OTP returns — no token yet, just a challenge. */
@@ -82,6 +90,70 @@ export class AuthService {
     return this.issue(user);
   }
 
+  /** Fetch the current user (for GET /auth/profile). */
+  async getProfile(userId: string): Promise<UserView> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+    return this.toUserView(user);
+  }
+
+  /** Update the optional profile fields (name / mobile). */
+  async updateProfile(
+    userId: string,
+    profile: UserProfile,
+  ): Promise<UserView> {
+    const user = await this.users.updateProfile(userId, profile);
+    return this.toUserView(user);
+  }
+
+  /**
+   * Step 1 of an email change: email an OTP to the user's CURRENT address, so
+   * they must prove control of the existing inbox. Fails fast if the new
+   * address is already taken.
+   */
+  async requestEmailChange(
+    userId: string,
+    newEmail: string,
+  ): Promise<{ otpRequired: true; sentTo: string; expiresInSeconds: number }> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const taken = await this.users.findByEmail(newEmail);
+    if (taken && taken.id !== userId) {
+      throw new ConflictException('Email already in use');
+    }
+
+    const { code, ttlSeconds } = await this.otp.issue(user.email);
+    await this.mail.sendOtp(user.email, code, ttlSeconds);
+
+    return {
+      otpRequired: true,
+      sentTo: user.email, // the OTP goes to the OLD email, on purpose
+      expiresInSeconds: ttlSeconds,
+    };
+  }
+
+  /**
+   * Step 2 of an email change: validate the OTP (sent to the old email) and
+   * switch the address. A fresh token is issued so its `email` claim matches.
+   */
+  async verifyEmailChange(
+    userId: string,
+    newEmail: string,
+    code: string,
+  ): Promise<AuthResult> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const result = await this.otp.verify(user.email, code);
+    if (!result.ok) {
+      throw new UnauthorizedException(`Invalid code (${result.reason})`);
+    }
+
+    const updated = await this.users.updateEmail(userId, newEmail);
+    return this.issue(updated);
+  }
+
   /** Mint a token for an authenticated user and shape the response. */
   private issue(user: User): AuthResult {
     const accessToken = this.keys.signAccessToken({
@@ -92,12 +164,17 @@ export class AuthService {
     return {
       accessToken,
       tokenType: 'Bearer',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        roles: user.roles,
-      },
+      user: this.toUserView(user),
+    };
+  }
+
+  private toUserView(user: User): UserView {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      mobile: user.mobile,
+      roles: user.roles,
     };
   }
 }

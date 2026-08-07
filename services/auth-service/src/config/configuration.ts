@@ -60,6 +60,17 @@ export default () => ({
     maxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5', 10),
   },
 
+  // CORS allowlist for browser frontends on other origins. Comma-separated,
+  // e.g. "https://shop.example.com,https://admin.example.com". Empty -> reflect
+  // the request origin (dev-friendly). Credentials are always allowed so the
+  // HttpOnly auth cookie can be sent cross-origin.
+  cors: {
+    origins: (process.env.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+  },
+
   // Per-IP rate limiting (nestjs/throttler). A single switch turns it on/off;
   // when off there is zero overhead (the guard isn't even registered). Enable
   // it in production — leave it off in dev so repeated Postman/curl runs don't

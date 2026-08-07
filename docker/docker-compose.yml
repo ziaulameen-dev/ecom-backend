@@ -75,6 +75,7 @@ services:
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED}
+      CORS_ORIGINS: ${CORS_ORIGINS}
       AUTH_DB_HOST: auth-db
       AUTH_DB_PORT: 5432
       AUTH_DB_USER: ${AUTH_DB_USER}
@@ -103,6 +104,7 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE}
       # Must match the auth service's cookie name so the guard can read it.
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME}
+      CORS_ORIGINS: ${CORS_ORIGINS}
       ECOM_DB_HOST: ecom-db
       ECOM_DB_PORT: 5432
       ECOM_DB_USER: ${ECOM_DB_USER}

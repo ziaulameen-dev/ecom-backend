@@ -21,6 +21,16 @@ export default () => ({
     cookieName: process.env.AUTH_COOKIE_NAME ?? 'access_token',
   },
 
+  // CORS allowlist for browser frontends on other origins. Comma-separated;
+  // empty -> reflect the request origin (dev). Shared with the auth-service via
+  // the same CORS_ORIGINS env so both services agree.
+  cors: {
+    origins: (process.env.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+  },
+
   // This service owns its OWN Postgres database (separate from auth's).
   db: {
     host: process.env.ECOM_DB_HOST ?? 'localhost',

@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { Reflector } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -21,6 +22,18 @@ async function bootstrap() {
   // Behind nginx, the socket IP is nginx's. Trust the first proxy hop so
   // `req.ip` reflects the real client (X-Forwarded-For) — used for rate limits.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  // Parse the Cookie header so JwtAuthGuard can read the HttpOnly auth cookie.
+  app.use(cookieParser());
+
+  // CORS for browser frontends on other origins. An empty allowlist reflects
+  // the request origin (dev); set CORS_ORIGINS in prod. credentials:true lets
+  // the browser send the HttpOnly auth cookie cross-origin.
+  const corsOrigins = config.get<string[]>('cors.origins') ?? [];
+  app.enableCors({
+    origin: corsOrigins.length ? corsOrigins : true,
+    credentials: true,
+  });
 
   // Validate incoming DTOs; strip/reject unknown properties.
   app.useGlobalPipes(

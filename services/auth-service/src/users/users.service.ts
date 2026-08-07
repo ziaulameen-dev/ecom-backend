@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -36,6 +42,39 @@ export class UsersService implements OnModuleInit {
 
   findByEmail(email: string): Promise<User | null> {
     return this.users.findOne({ where: { email: email.toLowerCase() } });
+  }
+
+  findById(id: string): Promise<User | null> {
+    return this.users.findOne({ where: { id } });
+  }
+
+  /** Update the optional profile fields. Only provided keys are changed. */
+  async updateProfile(id: string, profile: UserProfile): Promise<User> {
+    const user = await this.mustFind(id);
+    if (profile.name !== undefined) user.name = profile.name ?? null;
+    if (profile.mobile !== undefined) user.mobile = profile.mobile ?? null;
+    return this.users.save(user);
+  }
+
+  /**
+   * Change the account's email (its login identifier). Rejects if the new
+   * address is already taken by another account.
+   */
+  async updateEmail(id: string, newEmail: string): Promise<User> {
+    const normalized = newEmail.toLowerCase();
+    const existing = await this.findByEmail(normalized);
+    if (existing && existing.id !== id) {
+      throw new ConflictException('Email already in use');
+    }
+    const user = await this.mustFind(id);
+    user.email = normalized;
+    return this.users.save(user);
+  }
+
+  private async mustFind(id: string): Promise<User> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+    return user;
   }
 
   /** Create a new account. No password — identity is proven via OTP. */

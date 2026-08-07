@@ -20,8 +20,17 @@ and shares nothing with the ecom-api except the public JWKS.
 | POST | `/auth/otp` | public | **Step 1**: email a one-time code (signup or login) |
 | POST | `/auth/verify-otp` | public | **Step 2**: validate the OTP, create the account if new, deliver a token |
 | POST | `/auth/logout` | public | Clear the auth cookie (cookie mode) |
+| GET | `/auth/me` | logged-in | Current user (id, email, name, mobile, roles) |
+| PATCH | `/auth/profile` | logged-in | Update optional profile (`name` / `mobile`) |
+| POST | `/auth/email/change` | logged-in | **Step 1**: email an OTP to the CURRENT address to authorize an email change |
+| POST | `/auth/email/verify` | logged-in | **Step 2**: confirm the OTP and switch to `newEmail`; re-issues the token |
 | GET | `/.well-known/jwks.json` | public | Publish the PUBLIC signing key(s) as a JWKS |
 | GET | `/health` | public | Liveness probe |
+
+The `logged-in` routes are protected by a local `JwtAuthGuard` that verifies the
+token with this service's own key (no JWKS needed) — Bearer or cookie, same as
+the ecom-api. **Email change is confirmed via an OTP sent to the _old_ email**,
+so a stolen token alone can't take over the account.
 
 **Auth is passwordless and signup == login:** email → emailed code → token; a
 brand-new email becomes an account when it verifies. See
@@ -82,10 +91,12 @@ services/auth-service/src/
 ├── jwks/                         # ★ public key publication
 │   ├── jwks.controller.ts        #   GET /.well-known/jwks.json  (@Raw output)
 │   └── jwks.module.ts
-├── auth/                         # ★ passwordless OTP: request-otp / verify-otp
-│   ├── auth.controller.ts        #   POST /auth/otp, /verify-otp, /logout
-│   ├── auth.service.ts           #   OTP issue/verify, lazy account create, token issuance
-│   └── dto/                      #   validated request bodies (request-otp, verify-otp)
+├── auth/                         # ★ passwordless OTP + account management
+│   ├── auth.controller.ts        #   /auth/otp, /verify-otp, /me, /profile, /email/*, /logout
+│   ├── auth.service.ts           #   OTP issue/verify, lazy account create, profile/email updates
+│   ├── jwt-auth.guard.ts         #   verifies our own tokens (Bearer/cookie) for protected routes
+│   ├── current-user.decorator.ts #   @CurrentUser() -> req.user
+│   └── dto/                      #   request bodies (request-otp, verify-otp, update-profile, email change)
 ├── otp/                          # ★ one-time codes (auth-db)
 │   ├── login-otp.entity.ts       #   TypeORM entity: login_otps (hashed code + expiry)
 │   ├── otp.service.ts            #   issue / verify (hash, TTL, attempt limit)
@@ -202,6 +213,8 @@ verifier which public key from the JWKS to use.
 | `JWT_ISSUER` | `ecom-auth` | `iss` claim (must match ecom-api) |
 | `JWT_AUDIENCE` | `ecom-api` | `aud` claim (must match ecom-api) |
 | `ACCESS_TOKEN_TTL` | `15m` | token lifetime |
+| `CORS_ORIGINS` | (empty) | comma-separated browser origin allowlist; empty reflects the request origin (dev) |
+| `RATE_LIMIT_ENABLED` | `false` | per-IP rate limiting on the auth endpoints (see [OTP_LOGIN.md](./OTP_LOGIN.md)) |
 | `AUTH_DB_HOST/PORT/USER/PASSWORD/NAME` | see `.env.example` | its Postgres |
 
 ---

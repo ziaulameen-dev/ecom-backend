@@ -1,18 +1,26 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AuthResult, AuthService } from './auth.service';
+import { CurrentUser } from './current-user.decorator';
+import { ChangeEmailDto } from './dto/change-email.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { VerifyEmailChangeDto } from './dto/verify-email-change.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { AuthUser, JwtAuthGuard } from './jwt-auth.guard';
 
 /**
  * Passwordless authentication. One flow for both signup and login:
@@ -67,6 +75,56 @@ export class AuthController {
   logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie(this.config.get<string>('cookie.name')!, { path: '/' });
     return { loggedOut: true };
+  }
+
+  // ---- Authenticated account management -------------------------------------
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  // Return the current user (handy for a profile screen after login).
+  me(@CurrentUser() user: AuthUser) {
+    return this.auth.getProfile(user.sub);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  // Update the optional profile fields (name / mobile).
+  updateProfile(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.auth.updateProfile(user.sub, {
+      name: dto.name,
+      mobile: dto.mobile,
+    });
+  }
+
+  @Post('email/change')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Step 1: email an OTP to the CURRENT address to authorize the change.
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  changeEmail(@CurrentUser() user: AuthUser, @Body() dto: ChangeEmailDto) {
+    return this.auth.requestEmailChange(user.sub, dto.newEmail);
+  }
+
+  @Post('email/verify')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Step 2: confirm the OTP and switch the email; re-issues the token.
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  async verifyEmailChange(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: VerifyEmailChangeDto,
+    @Headers(AUTH_SOURCE_HEADER) source: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.verifyEmailChange(
+      user.sub,
+      dto.newEmail,
+      dto.otp,
+    );
+    return this.deliver(result, source, res);
   }
 
   /**

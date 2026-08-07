@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Ecom Platform (auth + ecom-api via nginx)",
-    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nTOKEN DELIVERY (on verify-otp) via the `X-Auth-Source` header:\n  • bearer (DEFAULT/auto): token in the JSON body (mobile / services)\n  • cookie: HttpOnly cookie, token NOT in the body (browser)\n\nRun order (bearer): Request OTP -> Read OTP from Mailpit -> Verify OTP (bearer) -> Profile (Bearer).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
+    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nThis collection uses BEARER tokens throughout (token in the JSON body, saved to {{accessToken}}). Cookie delivery is shown ONCE — see 'Cookie mode example (X-Auth-Source: cookie)' — add that header to any token-issuing request to get an HttpOnly cookie instead.\n\nRun order: 1. Request OTP -> 2. Read OTP from Mailpit -> 3. Verify OTP (bearer) -> 4-7 account management -> Ecom API (Profile / products).\n\nAuthenticated account routes (Bearer): GET /auth/me, PATCH /auth/profile, POST /auth/email/change + /auth/email/verify (OTP goes to the OLD email).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -129,7 +129,95 @@
           }
         },
         {
-          "name": "3b. Verify OTP (cookie mode)",
+          "name": "4. Get me (Bearer)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Returns the current user. Uses the Bearer token from step 3."
+          }
+        },
+        {
+          "name": "5. Update profile (Bearer)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin User\",\n  \"mobile\": \"+15551234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "profile"]
+            },
+            "description": "Updates the optional name / mobile (both optional)."
+          }
+        },
+        {
+          "name": "6. Change email - request OTP (Bearer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEmail\": \"admin-new@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/email/change",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "email", "change"]
+            },
+            "description": "Step 1 of an email change: emails an OTP to the CURRENT address (proves control of the existing inbox). Then run '2. Read OTP from Mailpit' to capture {{otp}}."
+          }
+        },
+        {
+          "name": "7. Change email - verify (Bearer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (json.data && json.data.accessToken) pm.collectionVariables.set('accessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEmail\": \"admin-new@example.com\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/email/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "email", "verify"]
+            },
+            "description": "Step 2: confirms the OTP (sent to the OLD email) and switches to newEmail. Re-issues the token; the script saves the fresh {{accessToken}}. Run '2. Read OTP from Mailpit' right before this."
+          }
+        },
+        {
+          "name": "Cookie mode example (X-Auth-Source: cookie)",
           "request": {
             "method": "POST",
             "header": [
@@ -145,7 +233,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["auth", "verify-otp"]
             },
-            "description": "Same step 2 but X-Auth-Source: cookie -> sets an HttpOnly cookie instead of returning the token. (Re-run Request OTP + Read OTP first; each OTP is single-use.)"
+            "description": "THE single cookie example. Everything else here uses Bearer. To use cookie delivery instead, add the header `X-Auth-Source: cookie` to any token-issuing request (verify-otp or email/verify): the server sets an HttpOnly cookie and omits the body token. Postman then auto-sends that cookie on later requests, so you can drop the Authorization header. (Re-run Request OTP + Read OTP first; each OTP is single-use.)"
           }
         },
         {
@@ -214,19 +302,6 @@
               "path": ["api", "profile"]
             },
             "description": "Uses the Bearer token from 'Verify OTP (bearer)'."
-          }
-        },
-        {
-          "name": "Profile (cookie) — no Authorization header",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "X-Auth-Source", "value": "cookie" }],
-            "url": {
-              "raw": "{{baseUrl}}/api/profile",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "profile"]
-            },
-            "description": "Run 'Verify OTP (cookie mode)' first; Postman sends the HttpOnly cookie automatically."
           }
         },
         {

@@ -35,10 +35,14 @@ async function bootstrap() {
   // Consistent success envelope + error shape across the platform.
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());
-  // `credentials: true` + reflecting the request origin is required for the
-  // browser to send the auth cookie on cross-origin requests. Same-origin
-  // (through nginx) works regardless.
-  app.enableCors({ origin: true, credentials: true });
+  // `credentials: true` lets the browser send the auth cookie on cross-origin
+  // requests. Same-origin (through nginx) works regardless. An empty allowlist
+  // reflects the request origin (dev); set CORS_ORIGINS in prod.
+  const corsOrigins = config.get<string[]>('cors.origins') ?? [];
+  app.enableCors({
+    origin: corsOrigins.length ? corsOrigins : true,
+    credentials: true,
+  });
 
   // `0.0.0.0` is important inside Docker so the port is reachable from nginx.
   await app.listen(port, '0.0.0.0');

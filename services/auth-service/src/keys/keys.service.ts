@@ -42,6 +42,7 @@ export class KeysService implements OnModuleInit {
   private readonly logger = new Logger(KeysService.name);
 
   private privateKeyPem!: string;
+  private publicKeyPem!: string;
   private jwk!: JwkWithMeta;
 
   constructor(private readonly config: ConfigService) {}
@@ -56,8 +57,32 @@ export class KeysService implements OnModuleInit {
       format: 'pem',
     }) as string;
 
+    this.publicKeyPem = publicKey.export({
+      type: 'spki',
+      format: 'pem',
+    }) as string;
+
     this.jwk = this.buildJwk(publicKey);
     this.logger.log(`Signing key ready (kid=${this.jwk.kid})`);
+  }
+
+  /**
+   * Verify a token this service signed and return its claims. The auth-service
+   * uses this to protect its own routes — unlike the ecom-api it doesn't need
+   * JWKS, it already holds the key. Throws if signature / iss / aud / exp fail.
+   */
+  verifyAccessToken(token: string): AccessTokenClaims {
+    const payload = jwt.verify(token, this.publicKeyPem, {
+      algorithms: ['RS256'],
+      issuer: this.config.get<string>('jwt.issuer'),
+      audience: this.config.get<string>('jwt.audience'),
+    }) as jwt.JwtPayload;
+
+    return {
+      sub: payload.sub as string,
+      email: (payload.email as string) ?? '',
+      roles: (payload.roles as string[]) ?? [],
+    };
   }
 
   /**
