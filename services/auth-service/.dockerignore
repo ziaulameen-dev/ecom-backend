@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+# TypeScript incremental cache — MUST be excluded or the in-container tsc skips
+# emitting JS (produces a dist without main.js). Learned the hard way.
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore
+*.md
+.vscode
+.idea
+.DS_Store

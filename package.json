@@ -1,0 +1,14 @@
+{
+  "name": "ecom-backend-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Microservices platform: nginx gateway + auth-service + ecom-api, each with its own Postgres",
+  "scripts": {
+    "up": "docker compose --env-file .env -f docker/docker-compose.yml up -d --build",
+    "down": "docker compose --env-file .env -f docker/docker-compose.yml down",
+    "down:volumes": "docker compose --env-file .env -f docker/docker-compose.yml down -v",
+    "logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f",
+    "ps": "docker compose --env-file .env -f docker/docker-compose.yml ps",
+    "build": "docker compose --env-file .env -f docker/docker-compose.yml build"
+  }
+}

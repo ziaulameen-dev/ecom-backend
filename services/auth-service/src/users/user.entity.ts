@@ -1,0 +1,39 @@
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+
+/**
+ * A registered user, persisted in the auth service's OWN Postgres database.
+ *
+ * Auth is fully PASSWORDLESS — there is no password hash. A user proves
+ * ownership of their email by verifying a one-time code (OTP). Accounts are
+ * created lazily the first time an email verifies an OTP, so the profile fields
+ * below are all optional and can be filled in later.
+ */
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ unique: true })
+  email!: string;
+
+  // Optional profile — collected at signup (all optional) or edited later.
+  // Country is deliberately NOT stored here; it lives on the shipping address
+  // captured at checkout.
+  @Column({ type: 'varchar', nullable: true })
+  name!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  mobile!: string | null;
+
+  // Stored as a Postgres text[] column, e.g. {admin,customer}.
+  @Column('text', { array: true, default: '{customer}' })
+  roles!: string[];
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+}

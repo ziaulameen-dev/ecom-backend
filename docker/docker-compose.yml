@@ -1,0 +1,137 @@
+# =============================================================================
+# Full platform: nginx gateway + auth-service + ecom-api, each app with its OWN
+# Postgres database (database-per-service). Only nginx is published to the host.
+#
+# Paths are relative to THIS file (docker/). Variable substitution (${VAR})
+# comes from the project-root .env (the npm scripts pass --env-file .env).
+# =============================================================================
+
+# Compose project name. Without this it defaults to the folder holding this
+# file ("docker"), giving containers like `docker-nginx-1`. Setting it makes
+# them `ecom-backend-nginx-1`, network `ecom-backend_default`, etc.
+name: ecom-backend
+
+services:
+  # ---- Databases (one per service, never shared) ----------------------------
+  auth-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${AUTH_DB_USER}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ecom-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${ECOM_DB_USER}
+      POSTGRES_PASSWORD: ${ECOM_DB_PASSWORD}
+      POSTGRES_DB: ${ECOM_DB_NAME}
+    volumes:
+      - ecom-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ---- Mailpit (local mail server + web UI to view captured email) ----------
+  mailpit:
+    image: axllent/mailpit:latest
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    ports:
+      # Only the web UI is published to the host. SMTP stays INTERNAL — the
+      # auth-service reaches it as mailpit:1025 over the Docker network — so we
+      # don't collide with any other Mailpit already using host port 1025.
+      - '${MAILPIT_UI_PORT}:8025' # web UI (host 8028 -> container 8025)
+    expose:
+      - '1025' # SMTP, internal only
+    restart: unless-stopped
+
+  # ---- Auth service (issues JWTs, publishes JWKS, sends OTP email) -----------
+  auth-service:
+    build:
+      context: ../services/auth-service
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      AUTH_PORT: ${AUTH_PORT}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE}
+      AUTH_COOKIE_MAX_AGE_MS: ${AUTH_COOKIE_MAX_AGE_MS}
+      # Reach Mailpit's SMTP over the Docker network.
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED}
+      AUTH_DB_HOST: auth-db
+      AUTH_DB_PORT: 5432
+      AUTH_DB_USER: ${AUTH_DB_USER}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      AUTH_DB_NAME: ${AUTH_DB_NAME}
+    # Published for direct debugging; nginx reaches it internally either way.
+    ports:
+      - '${AUTH_PORT}:3009'
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
+  # ---- Ecom API (verifies JWTs via the auth service's JWKS) -----------------
+  ecom-api:
+    build:
+      context: ../services/ecom-api
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      ECOM_PORT: ${ECOM_PORT}
+      # Fetch the auth service's PUBLIC keys over the internal Docker network.
+      JWKS_URI: http://auth-service:3009/.well-known/jwks.json
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      # Must match the auth service's cookie name so the guard can read it.
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME}
+      ECOM_DB_HOST: ecom-db
+      ECOM_DB_PORT: 5432
+      ECOM_DB_USER: ${ECOM_DB_USER}
+      ECOM_DB_PASSWORD: ${ECOM_DB_PASSWORD}
+      ECOM_DB_NAME: ${ECOM_DB_NAME}
+    # NOT published to the host — reached only through nginx (as ecom-api:3008).
+    expose:
+      - '3008'
+    depends_on:
+      ecom-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ---- nginx gateway (the single public entry point) ------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - '${GATEWAY_PORT}:3008'
+    depends_on:
+      auth-service:
+        condition: service_started
+      ecom-api:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  auth-db-data:
+  ecom-db-data:

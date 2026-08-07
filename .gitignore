@@ -1,0 +1,32 @@
+# compiled output (root + every service)
+dist
+node_modules
+/build
+*.tsbuildinfo
+
+# logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# tests / coverage
+/coverage

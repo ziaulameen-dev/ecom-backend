@@ -1,0 +1,286 @@
+{
+  "info": {
+    "name": "Ecom Platform (auth + ecom-api via nginx)",
+    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nTOKEN DELIVERY (on verify-otp) via the `X-Auth-Source` header:\n  • bearer (DEFAULT/auto): token in the JSON body (mobile / services)\n  • cookie: HttpOnly cookie, token NOT in the body (browser)\n\nRun order (bearer): Request OTP -> Read OTP from Mailpit -> Verify OTP (bearer) -> Profile (Bearer).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3008", "type": "string" },
+    { "key": "mailpitUrl", "value": "http://localhost:8028", "type": "string" },
+    { "key": "email", "value": "admin@example.com", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "otp", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Gateway",
+      "item": [
+        {
+          "name": "Gateway health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/gateway/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["gateway", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth service",
+      "item": [
+        {
+          "name": "1. Request OTP (signup or login)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('OTP required (no token yet)', () => {",
+                  "  pm.expect(json.data.otpRequired).to.eql(true);",
+                  "  pm.expect(json.data.accessToken).to.be.undefined;",
+                  "});",
+                  "console.log('isNewUser =', json.data.isNewUser);",
+                  "pm.collectionVariables.set('email', JSON.parse(pm.request.body.raw).email);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "otp"]
+            },
+            "description": "Step 1 (passwordless): emails a 6-digit OTP (captured by Mailpit). Same endpoint whether the email is new (signup) or existing (login); response.isNewUser tells the UI whether to show the optional name/mobile form. No token is returned."
+          }
+        },
+        {
+          "name": "2. Read OTP from Mailpit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "const msg = (json.messages && json.messages[0]) || {};",
+                  "const hay = (msg.Subject || '') + ' ' + (msg.Snippet || '');",
+                  "const m = hay.match(/(\\d{6})/);",
+                  "pm.test('found an OTP in the latest email', () => pm.expect(m, 'no 6-digit code found').to.not.be.null);",
+                  "if (m) { pm.collectionVariables.set('otp', m[1]); console.log('OTP =', m[1]); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/messages?limit=1",
+              "host": ["{{mailpitUrl}}"],
+              "path": ["api", "v1", "messages"],
+              "query": [{ "key": "limit", "value": "1" }]
+            },
+            "description": "Reads the latest captured email from Mailpit and extracts the 6-digit OTP into {{otp}}. (In a real app the user reads this from their inbox.)"
+          }
+        },
+        {
+          "name": "3. Verify OTP (bearer) — saves token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('token issued', () => pm.expect(json.data.accessToken).to.be.a('string'));",
+                  "pm.collectionVariables.set('accessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            },
+            "description": "Step 2: exchanges the OTP for a token. Default (bearer) returns the token in the body; the script saves it to {{accessToken}}. For a NEW email you may also send optional \"name\" and \"mobile\" fields to fill the profile at signup."
+          }
+        },
+        {
+          "name": "3b. Verify OTP (cookie mode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Auth-Source", "value": "cookie" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            },
+            "description": "Same step 2 but X-Auth-Source: cookie -> sets an HttpOnly cookie instead of returning the token. (Re-run Request OTP + Read OTP first; each OTP is single-use.)"
+          }
+        },
+        {
+          "name": "Logout (clears cookie)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "JWKS (public keys)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/jwks.json",
+              "host": ["{{baseUrl}}"],
+              "path": [".well-known", "jwks.json"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ecom API",
+      "item": [
+        {
+          "name": "Health (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            }
+          }
+        },
+        {
+          "name": "List products (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"]
+            }
+          }
+        },
+        {
+          "name": "Profile (Bearer)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "profile"]
+            },
+            "description": "Uses the Bearer token from 'Verify OTP (bearer)'."
+          }
+        },
+        {
+          "name": "Profile (cookie) — no Authorization header",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Auth-Source", "value": "cookie" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "profile"]
+            },
+            "description": "Run 'Verify OTP (cookie mode)' first; Postman sends the HttpOnly cookie automatically."
+          }
+        },
+        {
+          "name": "Create product (admin, Bearer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cap\",\n  \"priceCents\": 1500,\n  \"stock\": 40\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"]
+            },
+            "description": "Requires an ADMIN token. Log in as admin and verify OTP first."
+          }
+        },
+        {
+          "name": "Create product WITHOUT auth (expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected with 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Auth-Source", "value": "bearer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hacker Hat\",\n  \"priceCents\": 1,\n  \"stock\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"]
+            },
+            "description": "Negative test — forces bearer source with no Authorization header -> 401."
+          }
+        }
+      ]
+    }
+  ]
+}
