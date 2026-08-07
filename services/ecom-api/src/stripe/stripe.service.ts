@@ -82,6 +82,34 @@ export class StripeService {
     );
   }
 
+  /** Cancel an unpaid PaymentIntent (used when cancelling a pending order). */
+  async cancelPaymentIntent(id: string): Promise<void> {
+    try {
+      await this.stripe.paymentIntents.cancel(id);
+    } catch (err) {
+      // Already canceled/succeeded — non-fatal for our cancel flow.
+      this.logger.warn(`PI cancel (${id}): ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Refund a captured payment, fully or partially (omit amount for full).
+   * Returns whether the payment is now fully refunded.
+   */
+  async refund(
+    paymentIntentId: string,
+    amountMinor?: number,
+  ): Promise<{ fullyRefunded: boolean }> {
+    const refund = await this.stripe.refunds.create({
+      payment_intent: paymentIntentId,
+      ...(amountMinor != null ? { amount: amountMinor } : {}),
+    });
+    const charge =
+      refund.charge &&
+      (await this.stripe.charges.retrieve(String(refund.charge)));
+    return { fullyRefunded: !!charge && charge.refunded };
+  }
+
   /** Verify + parse a webhook payload against the signing secret. */
   constructEvent(payload: Buffer, signature: string): Stripe.Event {
     return this.stripe.webhooks.constructEvent(

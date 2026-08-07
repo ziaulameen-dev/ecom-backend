@@ -102,6 +102,16 @@ export class ProductsService implements OnModuleInit {
     return (res.affected ?? 0) > 0;
   }
 
+  /** Add stock back (on cancel / refund / accepted return). */
+  async incrementStock(productId: string, qty: number): Promise<void> {
+    await this.products
+      .createQueryBuilder()
+      .update(Product)
+      .set({ stock: () => `stock + ${qty}` })
+      .where('id = :id', { id: productId })
+      .execute();
+  }
+
   // ---- Admin: products ------------------------------------------------------
 
   create(dto: CreateProductDto): Promise<Product> {

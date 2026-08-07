@@ -190,11 +190,97 @@ export class OrdersService {
     );
   }
 
+  /**
+   * Reconcile a FULL refund that happened outside the app (e.g. the Stripe
+   * Dashboard). If the app already handled it (status cancelled/refunded) this
+   * is a no-op, so we never double-restock.
+   */
   async markRefundedByPaymentIntent(paymentIntentId: string): Promise<void> {
-    await this.orders.update(
-      { stripePaymentIntentId: paymentIntentId },
-      { status: 'refunded' },
+    const order = await this.orders.findOne({
+      where: { stripePaymentIntentId: paymentIntentId },
+      relations: { items: true },
+    });
+    if (!order || order.status === 'refunded' || order.status === 'cancelled') {
+      return;
+    }
+    await this.restock(order.items);
+    order.status = 'refunded';
+    await this.orders.save(order);
+    this.logger.log(`Order ${order.id} refunded (external)`);
+  }
+
+  // ---- Cancel / refund ------------------------------------------------------
+
+  /** Customer cancels their own order. */
+  cancelForUser(userId: string, id: string): Promise<Order> {
+    return this.cancel(id, userId);
+  }
+
+  /** Admin cancels any order. */
+  cancelAsAdmin(id: string): Promise<Order> {
+    return this.cancel(id, null);
+  }
+
+  private async cancel(id: string, userId: string | null): Promise<Order> {
+    const order = await this.loadOwned(id, userId);
+    if (['shipped', 'delivered', 'fulfilled'].includes(order.status)) {
+      throw new BadRequestException(
+        'Order already shipped — request a return instead',
+      );
+    }
+    if (['cancelled', 'refunded', 'failed'].includes(order.status)) {
+      throw new BadRequestException(`Order is ${order.status}`);
+    }
+
+    if (order.status === 'paid' && order.stripePaymentIntentId) {
+      await this.stripe.refund(order.stripePaymentIntentId); // full refund
+      await this.restock(order.items); // paid => stock was decremented
+    } else if (order.status === 'pending' && order.stripePaymentIntentId) {
+      await this.stripe.cancelPaymentIntent(order.stripePaymentIntentId);
+    }
+    order.status = 'cancelled';
+    await this.orders.save(order);
+    this.logger.log(`Order ${order.id} cancelled`);
+    return order;
+  }
+
+  /** Admin full/partial refund. Full refunds restore stock + mark refunded. */
+  async refund(id: string, amountMinor?: number): Promise<Order> {
+    const order = await this.loadOwned(id, null);
+    if (!order.stripePaymentIntentId || order.status === 'pending') {
+      throw new BadRequestException('Order has no captured payment to refund');
+    }
+    if (order.status === 'refunded' || order.status === 'cancelled') {
+      throw new BadRequestException(`Order is ${order.status}`);
+    }
+    const { fullyRefunded } = await this.stripe.refund(
+      order.stripePaymentIntentId,
+      amountMinor,
     );
+    if (fullyRefunded) {
+      await this.restock(order.items);
+      order.status = 'refunded';
+      await this.orders.save(order);
+    }
+    this.logger.log(`Order ${order.id} refunded (${fullyRefunded ? 'full' : 'partial'})`);
+    return order;
+  }
+
+  /** Restore stock for a set of order lines. */
+  async restock(items: OrderItem[]): Promise<void> {
+    for (const item of items) {
+      await this.products.incrementStock(item.productId, item.quantity);
+    }
+  }
+
+  /** Load an order, scoped to a user when userId is provided (else admin). */
+  async loadOwned(id: string, userId: string | null): Promise<Order> {
+    const order = await this.orders.findOne({
+      where: userId ? { id, userId } : { id },
+      relations: { items: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    return order;
   }
 
   // ---- Queries / admin ------------------------------------------------------

@@ -13,6 +13,7 @@ import { HealthModule } from './health/health.module';
 import { OrderItem } from './orders/order-item.entity';
 import { Order } from './orders/order.entity';
 import { OrdersModule } from './orders/orders.module';
+import { ReturnRequest } from './orders/return-request.entity';
 import { ProductPrice } from './products/product-price.entity';
 import { Product } from './products/product.entity';
 import { ProductsModule } from './products/products.module';
@@ -52,6 +53,7 @@ import { ShippingModule } from './shipping/shipping.module';
           Address,
           Order,
           OrderItem,
+          ReturnRequest,
         ],
         synchronize: config.get<string>('nodeEnv') !== 'production',
         retryAttempts: 10,

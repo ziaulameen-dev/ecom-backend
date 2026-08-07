@@ -11,12 +11,14 @@ import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { ReturnRequest } from './return-request.entity';
+import { ReturnsService } from './returns.service';
 import { WebhookController } from './webhook.controller';
 
 /** Checkout, orders, Stripe payment webhook, and admin order management. */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem]),
+    TypeOrmModule.forFeature([Order, OrderItem, ReturnRequest]),
     AuthModule,
     CartModule,
     AddressesModule,
@@ -25,6 +27,6 @@ import { WebhookController } from './webhook.controller';
     StripeModule,
   ],
   controllers: [CheckoutController, OrdersController, WebhookController],
-  providers: [OrdersService],
+  providers: [OrdersService, ReturnsService],
 })
 export class OrdersModule {}

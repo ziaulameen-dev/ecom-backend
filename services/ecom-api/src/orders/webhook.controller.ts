@@ -55,7 +55,9 @@ export class WebhookController {
         break;
       case 'charge.refunded': {
         const charge = event.data.object as Stripe.Charge;
-        if (charge.payment_intent) {
+        // Only reconcile FULL refunds done outside the app; partials (e.g.
+        // item returns) are handled by their own flow.
+        if (charge.payment_intent && charge.refunded) {
           await this.orders.markRefundedByPaymentIntent(
             String(charge.payment_intent),
           );
