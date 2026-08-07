@@ -73,3 +73,18 @@ CREATE TABLE public.refresh_tokens (
     CONSTRAINT refresh_tokens_hash_unique     UNIQUE (token_hash)
 );
 CREATE INDEX refresh_tokens_user_id_idx ON public.refresh_tokens (user_id);
+
+-- ---------------------------------------------------------------------------
+-- audit_logs — append-only trail of security-sensitive actions
+-- (login, email_changed, account_deleted, logout_all). Never mutated.
+-- ---------------------------------------------------------------------------
+CREATE TABLE public.audit_logs (
+    id         uuid        NOT NULL DEFAULT uuid_generate_v4(),
+    user_id    uuid            NULL,                    -- actor (indexed); NULL if unknown
+    action     varchar     NOT NULL,                    -- e.g. 'login', 'email_changed'
+    metadata   jsonb           NULL,                    -- free-form context, no secrets
+    created_at timestamp   NOT NULL DEFAULT now(),
+
+    CONSTRAINT audit_logs_pkey PRIMARY KEY (id)
+);
+CREATE INDEX audit_logs_user_id_idx ON public.audit_logs (user_id);

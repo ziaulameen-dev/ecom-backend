@@ -4,6 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { KeysService } from '../keys/keys.service';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from '../otp/otp.service';
@@ -61,6 +62,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly mail: MailService,
     private readonly refresh: RefreshService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -97,10 +99,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired code');
     }
 
+    const existing = await this.users.findByEmail(email);
     const user =
-      (await this.users.findByEmail(email)) ??
-      (await this.users.create(email, ['customer'], profile));
+      existing ?? (await this.users.create(email, ['customer'], profile));
 
+    await this.audit.record(user.id, 'login', { isNewUser: !existing });
     return this.issue(user);
   }
 
@@ -200,7 +203,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired code');
     }
 
+    const previousEmail = user.email;
     const updated = await this.users.updateEmail(userId, pending);
+    await this.audit.record(userId, 'email_changed', {
+      from: previousEmail,
+      to: updated.email,
+    });
     return this.issue(updated);
   }
 
@@ -236,6 +244,7 @@ export class AuthService {
 
     await this.users.softDelete(userId);
     await this.refresh.revokeAllForUser(userId);
+    await this.audit.record(userId, 'account_deleted');
     return { deleted: true };
   }
 
@@ -285,8 +294,9 @@ export class AuthService {
   }
 
   /** Revoke every session for a user (logout everywhere). */
-  logoutAll(userId: string): Promise<void> {
-    return this.refresh.revokeAllForUser(userId);
+  async logoutAll(userId: string): Promise<void> {
+    await this.refresh.revokeAllForUser(userId);
+    await this.audit.record(userId, 'logout_all');
   }
 
   /** Mint an access + refresh token pair and shape the response. */

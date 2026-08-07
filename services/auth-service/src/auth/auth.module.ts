@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { KeysModule } from '../keys/keys.module';
 import { MailModule } from '../mail/mail.module';
 import { OtpModule } from '../otp/otp.module';
@@ -14,7 +15,14 @@ import { JwtAuthGuard } from './jwt-auth.guard';
  * routes (it verifies tokens locally via KeysService).
  */
 @Module({
-  imports: [UsersModule, KeysModule, OtpModule, MailModule, RefreshModule],
+  imports: [
+    UsersModule,
+    KeysModule,
+    OtpModule,
+    MailModule,
+    RefreshModule,
+    AuditModule,
+  ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],
 })

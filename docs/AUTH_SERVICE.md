@@ -142,6 +142,9 @@ services/auth-service/src/
 │   ├── user.entity.ts            #   TypeORM entity: users table (email + optional profile)
 │   ├── users.service.ts          #   findByEmail / create (no passwords)
 │   └── users.module.ts
+├── audit/                        # append-only audit trail (audit_logs)
+│   ├── audit.service.ts          #   record(userId, action, metadata)
+│   └── audit.module.ts
 ├── jobs/                         # scheduled housekeeping (@nestjs/schedule)
 │   ├── cleanup.service.ts        #   purges expired OTPs + refresh tokens (every 30m)
 │   └── jobs.module.ts

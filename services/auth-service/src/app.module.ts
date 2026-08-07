@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
+import { AuditLog } from './audit/audit-log.entity';
 import { AuthModule } from './auth/auth.module';
 import { ConditionalThrottlerGuard } from './common/guards/conditional-throttler.guard';
 import { HealthModule } from './health/health.module';
@@ -39,7 +40,7 @@ import { User } from './users/user.entity';
         username: config.get<string>('db.username'),
         password: config.get<string>('db.password'),
         database: config.get<string>('db.database'),
-        entities: [User, LoginOtp, RefreshToken],
+        entities: [User, LoginOtp, RefreshToken, AuditLog],
         synchronize: config.get<string>('nodeEnv') !== 'production',
         // Retry a few times so the app can start before Postgres is fully ready.
         retryAttempts: 10,
