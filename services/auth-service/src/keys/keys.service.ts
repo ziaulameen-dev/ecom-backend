@@ -2,6 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   createHash,
+  createPrivateKey,
+  createPublicKey,
   generateKeyPairSync,
   KeyObject,
 } from 'crypto';
@@ -48,9 +50,7 @@ export class KeysService implements OnModuleInit {
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit() {
-    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-      modulusLength: 2048,
-    });
+    const { privateKey, publicKey } = this.loadOrGenerateKeypair();
 
     this.privateKeyPem = privateKey.export({
       type: 'pkcs8',
@@ -64,6 +64,30 @@ export class KeysService implements OnModuleInit {
 
     this.jwk = this.buildJwk(publicKey);
     this.logger.log(`Signing key ready (kid=${this.jwk.kid})`);
+  }
+
+  /**
+   * Use the persistent key from config when provided (so tokens survive
+   * restarts), otherwise generate an ephemeral one and warn loudly.
+   */
+  private loadOrGenerateKeypair(): {
+    privateKey: KeyObject;
+    publicKey: KeyObject;
+  } {
+    const b64 = this.config.get<string>('jwt.privateKeyBase64');
+    if (b64) {
+      const pem = Buffer.from(b64, 'base64').toString('utf8');
+      const privateKey = createPrivateKey(pem);
+      const publicKey = createPublicKey(privateKey);
+      this.logger.log('Loaded persistent RSA signing key from config');
+      return { privateKey, publicKey };
+    }
+
+    this.logger.warn(
+      'No JWT_PRIVATE_KEY_BASE64 set — generating an EPHEMERAL key; ' +
+        'all tokens will be invalidated on restart. Set one for production.',
+    );
+    return generateKeyPairSync('rsa', { modulusLength: 2048 });
   }
 
   /**

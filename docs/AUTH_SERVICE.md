@@ -18,8 +18,10 @@ and shares nothing with the ecom-api except the public JWKS.
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | POST | `/auth/otp` | public | **Step 1**: email a one-time code (signup or login) |
-| POST | `/auth/verify-otp` | public | **Step 2**: validate the OTP, create the account if new, deliver a token |
-| POST | `/auth/logout` | public | Clear the auth cookie (cookie mode) |
+| POST | `/auth/verify-otp` | public | **Step 2**: validate the OTP, create the account if new, deliver a token pair |
+| POST | `/auth/refresh` | refresh token | Rotate the refresh token and mint a new access token (no OTP) |
+| POST | `/auth/logout` | public | Revoke the presented refresh token and clear both cookies |
+| POST | `/auth/logout-all` | logged-in | Revoke every session for the user (all devices) |
 | GET | `/auth/me` | logged-in | Current user (id, email, name, mobile, roles) |
 | PATCH | `/auth/profile` | logged-in | Update optional profile (`name` / `mobile`) |
 | POST | `/auth/email/change` | logged-in | **Step 1**: email an OTP to the CURRENT address (no body — new email asked for next) |
@@ -58,7 +60,16 @@ work until they expire — the usual stateless-JWT trade-off).
 brand-new email becomes an account when it verifies. See
 [OTP_LOGIN.md](./OTP_LOGIN.md).
 
-**Token delivery is selectable** (on verify-otp) via the `X-Auth-Source` header:
+**Sessions:** verify-otp / refresh return a **token pair** — a short-lived
+access token (`ACCESS_TOKEN_TTL`, default 15m) plus a long-lived **refresh
+token** (`REFRESH_TOKEN_TTL_DAYS`, default 30d). Refresh tokens are opaque,
+stored hashed, **single-use (rotated on every `/auth/refresh`)**, and revocable
+(`/auth/logout`, `/auth/logout-all`, and automatically on account deletion). The
+RSA **signing key persists** across restarts when `JWT_PRIVATE_KEY_BASE64` is
+set (otherwise an ephemeral key is generated and all tokens break on restart).
+
+**Token delivery is selectable** (on verify-otp / refresh) via the
+`X-Auth-Source` header:
 `bearer` (default — token in the JSON body, for mobile/services) or `cookie`
 (HttpOnly cookie, token NOT in the body, for browsers). See
 [AUTH_MODES.md](./AUTH_MODES.md).

@@ -9,7 +9,8 @@
     { "key": "mailpitUrl", "value": "http://localhost:8028", "type": "string" },
     { "key": "email", "value": "admin@example.com", "type": "string" },
     { "key": "accessToken", "value": "", "type": "string" },
-    { "key": "otp", "value": "", "type": "string" }
+    { "key": "otp", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" }
   ],
   "item": [
     {
@@ -108,7 +109,8 @@
                   "const json = pm.response.json();",
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
                   "pm.test('token issued', () => pm.expect(json.data.accessToken).to.be.a('string'));",
-                  "pm.collectionVariables.set('accessToken', json.data.accessToken);"
+                  "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "if (json.data.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
                 ]
               }
             }
@@ -288,15 +290,66 @@
           }
         },
         {
-          "name": "Logout (clears cookie)",
+          "name": "Refresh token (rotates) — saves new tokens",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (json.data && json.data.accessToken) pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "if (json.data && json.data.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Swaps a refresh token for a fresh access token WITHOUT re-doing the OTP flow. Single-use: the presented refresh token is rotated (revoked) and a new one issued — the script saves both. Reusing the old one returns 401. (Cookie clients omit the body; the token is read from the HttpOnly refresh cookie.)"
+          }
+        },
+        {
+          "name": "Logout (revokes refresh token)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/auth/logout",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "logout"]
-            }
+            },
+            "description": "Revokes the presented refresh token and clears both auth cookies. Cookie clients can omit the body."
+          }
+        },
+        {
+          "name": "Logout all devices (Bearer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout-all"]
+            },
+            "description": "Revokes EVERY active session for the current user. All existing refresh tokens stop working."
           }
         },
         {

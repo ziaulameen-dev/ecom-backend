@@ -7,6 +7,7 @@ import {
 import { KeysService } from '../keys/keys.service';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from '../otp/otp.service';
+import { RefreshService } from '../refresh/refresh.service';
 import { User } from '../users/user.entity';
 import { UserProfile, UsersService } from '../users/users.service';
 
@@ -23,6 +24,8 @@ export interface UserView {
 export interface AuthResult {
   accessToken: string;
   tokenType: 'Bearer';
+  refreshToken: string;
+  refreshExpiresAt: Date;
   user: UserView;
 }
 
@@ -57,6 +60,7 @@ export class AuthService {
     private readonly keys: KeysService,
     private readonly otp: OtpService,
     private readonly mail: MailService,
+    private readonly refresh: RefreshService,
   ) {}
 
   /**
@@ -227,6 +231,7 @@ export class AuthService {
     }
 
     await this.users.softDelete(userId);
+    await this.refresh.revokeAllForUser(userId);
     return { deleted: true };
   }
 
@@ -246,8 +251,16 @@ export class AuthService {
     return pendingEmail;
   }
 
-  /** Mint a token for an authenticated user and shape the response. */
-  private issue(user: User): AuthResult {
+  /**
+   * Refresh: rotate the presented refresh token and mint a new access token.
+   * Rejects if the session is invalid or the account is gone/deleted.
+   */
+  async refreshSession(refreshToken: string): Promise<AuthResult> {
+    const { userId, issued } = await this.refresh.rotate(refreshToken);
+    const user = await this.users.findById(userId);
+    if (!user || user.deletedAt) {
+      throw new UnauthorizedException('Account no longer active');
+    }
     const accessToken = this.keys.signAccessToken({
       sub: user.id,
       email: user.email,
@@ -256,6 +269,35 @@ export class AuthService {
     return {
       accessToken,
       tokenType: 'Bearer',
+      refreshToken: issued.token,
+      refreshExpiresAt: issued.expiresAt,
+      user: this.toUserView(user),
+    };
+  }
+
+  /** Revoke a single session (logout). */
+  logout(refreshToken: string | null): Promise<void> {
+    return refreshToken ? this.refresh.revoke(refreshToken) : Promise.resolve();
+  }
+
+  /** Revoke every session for a user (logout everywhere). */
+  logoutAll(userId: string): Promise<void> {
+    return this.refresh.revokeAllForUser(userId);
+  }
+
+  /** Mint an access + refresh token pair and shape the response. */
+  private async issue(user: User): Promise<AuthResult> {
+    const accessToken = this.keys.signAccessToken({
+      sub: user.id,
+      email: user.email,
+      roles: user.roles,
+    });
+    const issued = await this.refresh.issue(user.id);
+    return {
+      accessToken,
+      tokenType: 'Bearer',
+      refreshToken: issued.token,
+      refreshExpiresAt: issued.expiresAt,
       user: this.toUserView(user),
     };
   }

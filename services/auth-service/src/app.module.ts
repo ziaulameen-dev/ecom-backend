@@ -10,6 +10,7 @@ import { HealthModule } from './health/health.module';
 import { JwksModule } from './jwks/jwks.module';
 import { KeysModule } from './keys/keys.module';
 import { LoginOtp } from './otp/login-otp.entity';
+import { RefreshToken } from './refresh/refresh-token.entity';
 import { User } from './users/user.entity';
 
 /**
@@ -36,7 +37,7 @@ import { User } from './users/user.entity';
         username: config.get<string>('db.username'),
         password: config.get<string>('db.password'),
         database: config.get<string>('db.database'),
-        entities: [User, LoginOtp],
+        entities: [User, LoginOtp, RefreshToken],
         synchronize: config.get<string>('nodeEnv') !== 'production',
         // Retry a few times so the app can start before Postgres is fully ready.
         retryAttempts: 10,

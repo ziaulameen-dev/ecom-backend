@@ -7,16 +7,18 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthResult, AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { ChangeEmailVerifyDto } from './dto/change-email-verify.dto';
 import { ConfirmOtpDto } from './dto/confirm-otp.dto';
+import { RefreshDto } from './dto/refresh.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
@@ -70,10 +72,45 @@ export class AuthController {
     return this.deliver(result, source, res);
   }
 
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  // Exchange a valid refresh token for a new access token (rotates the refresh
+  // token too). NOT guarded — the refresh token itself is the credential.
+  @Throttle({ default: { limit: 30, ttl: 900_000 } })
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Headers(AUTH_SOURCE_HEADER) source: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const token = this.extractRefreshToken(req, dto.refreshToken);
+    const result = await this.auth.refreshSession(token ?? '');
+    return this.deliver(result, source, res);
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie(this.config.get<string>('cookie.name')!, { path: '/' });
+  // Revoke the presented refresh token and clear both auth cookies.
+  async logout(
+    @Body() dto: RefreshDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.logout(this.extractRefreshToken(req, dto.refreshToken));
+    this.clearAuthCookies(res);
+    return { loggedOut: true };
+  }
+
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Revoke every session for the current user (log out on all devices).
+  async logoutAll(
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.logoutAll(user.sub);
+    this.clearAuthCookies(res);
     return { loggedOut: true };
   }
 
@@ -155,29 +192,60 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.auth.verifyAccountDeletion(user.sub, dto.otp);
-    res.clearCookie(this.config.get<string>('cookie.name')!, { path: '/' });
+    this.clearAuthCookies(res);
     return result;
   }
 
   /**
-   * Deliver the token either as a Bearer token in the body (default) or as an
-   * HttpOnly cookie, based on the X-Auth-Source header.
+   * Deliver the token pair either in the body (Bearer — mobile/services) or as
+   * HttpOnly cookies (browser), based on the X-Auth-Source header. The refresh
+   * token is always issued; only its transport differs.
    */
   private deliver(result: AuthResult, source: string, res: Response) {
     if ((source ?? '').toLowerCase() === 'cookie') {
+      const secure = this.config.get<boolean>('cookie.secure');
+      const sameSite = this.config.get('cookie.sameSite');
       res.cookie(this.config.get<string>('cookie.name')!, result.accessToken, {
         httpOnly: true,
-        sameSite: this.config.get('cookie.sameSite'),
-        secure: this.config.get<boolean>('cookie.secure'),
+        sameSite,
+        secure,
         path: '/',
         maxAge: this.config.get<number>('cookie.maxAgeMs'),
       });
+      res.cookie(
+        this.config.get<string>('refresh.cookieName')!,
+        result.refreshToken,
+        {
+          httpOnly: true,
+          sameSite,
+          secure,
+          path: '/',
+          expires: result.refreshExpiresAt,
+        },
+      );
       return { user: result.user };
     }
     return {
       accessToken: result.accessToken,
       tokenType: result.tokenType,
+      refreshToken: result.refreshToken,
       user: result.user,
     };
+  }
+
+  /** Read the refresh token from the request body or the HttpOnly cookie. */
+  private extractRefreshToken(req: Request, bodyToken?: string): string | null {
+    if (bodyToken) return bodyToken;
+    const name = this.config.get<string>('refresh.cookieName')!;
+    const cookies = (req as Request & { cookies?: Record<string, string> })
+      .cookies;
+    return cookies?.[name] ?? null;
+  }
+
+  private clearAuthCookies(res: Response) {
+    res.clearCookie(this.config.get<string>('cookie.name')!, { path: '/' });
+    res.clearCookie(this.config.get<string>('refresh.cookieName')!, {
+      path: '/',
+    });
   }
 }

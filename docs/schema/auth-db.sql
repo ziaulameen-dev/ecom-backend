@@ -55,3 +55,21 @@ CREATE TABLE public.login_otps (
     CONSTRAINT login_otps_pkey         PRIMARY KEY (id),
     CONSTRAINT login_otps_email_unique UNIQUE (email)
 );
+
+-- ---------------------------------------------------------------------------
+-- refresh_tokens — long-lived, rotating, revocable sessions
+-- Only the HASH of the opaque token is stored. Rotated (revoked + reissued) on
+-- every /auth/refresh; revoked on logout / logout-all / account deletion.
+-- ---------------------------------------------------------------------------
+CREATE TABLE public.refresh_tokens (
+    id         uuid        NOT NULL DEFAULT uuid_generate_v4(),
+    user_id    uuid        NOT NULL,                    -- owning account (indexed)
+    token_hash varchar     NOT NULL,                    -- sha256(token), unique
+    expires_at timestamptz NOT NULL,                    -- session lifetime (default 30 days)
+    revoked_at timestamp       NULL,                    -- set on rotate/logout; NULL = active
+    created_at timestamp   NOT NULL DEFAULT now(),
+
+    CONSTRAINT refresh_tokens_pkey            PRIMARY KEY (id),
+    CONSTRAINT refresh_tokens_hash_unique     UNIQUE (token_hash)
+);
+CREATE INDEX refresh_tokens_user_id_idx ON public.refresh_tokens (user_id);

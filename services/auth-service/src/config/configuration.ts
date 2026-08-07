@@ -18,6 +18,21 @@ export default () => ({
     audience: process.env.JWT_AUDIENCE ?? 'ecom-api',
     // How long an access token is valid (zeit/ms format, e.g. "15m", "900s").
     accessTokenTtl: process.env.ACCESS_TOKEN_TTL ?? '15m',
+    // Base64-encoded PKCS8 PEM of the RSA private key. When set, the signing
+    // key SURVIVES restarts (tokens stay valid, `kid` is stable). When absent
+    // an ephemeral key is generated on boot — fine for dev, but every restart
+    // invalidates all tokens. Generate one with:
+    //   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | base64
+    privateKeyBase64: process.env.JWT_PRIVATE_KEY_BASE64 ?? '',
+  },
+
+  // Long-lived refresh tokens. The short access token is refreshed via
+  // POST /auth/refresh without re-doing the OTP flow. Refresh tokens are
+  // opaque, stored HASHED, single-use (rotated on every refresh), and
+  // revocable (logout / logout-all).
+  refresh: {
+    ttlDays: parseInt(process.env.REFRESH_TOKEN_TTL_DAYS ?? '30', 10),
+    cookieName: process.env.AUTH_REFRESH_COOKIE_NAME ?? 'refresh_token',
   },
 
   // The token is delivered to browsers as an HttpOnly cookie so frontend JS
