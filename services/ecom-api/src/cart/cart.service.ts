@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
 import { CartItem } from './cart-item.entity';
 import { Cart } from './cart.entity';
@@ -63,11 +63,47 @@ export class CartService {
 
     if (owner.cookieCartId) {
       const guest = await this.carts.findOne({
-        where: { id: owner.cookieCartId, userId: null as never },
+        where: { id: owner.cookieCartId, userId: IsNull() },
       });
       if (guest) return { cart: guest, created: false };
     }
     return { cart: await this.create(null, country), created: true };
+  }
+
+  /**
+   * Merge a guest cart (from the cookie) into the user's cart on login: add
+   * each guest line (summing quantities, capping at stock), then delete the
+   * guest cart. Unpriced-in-country lines are skipped rather than failing.
+   */
+  async merge(userId: string, guestCartId: string | null): Promise<Cart> {
+    const { cart: userCart, created } = await this.resolveOrCreate({
+      userId,
+      cookieCartId: null,
+    });
+    if (!guestCartId) return userCart;
+
+    const guest = await this.carts.findOne({
+      where: { id: guestCartId, userId: IsNull() },
+    });
+    if (!guest || guest.id === userCart.id) return userCart;
+
+    // A brand-new user cart adopts the country the guest was shopping in.
+    if (created && userCart.country !== guest.country) {
+      userCart.country = guest.country;
+      await this.carts.save(userCart);
+    }
+
+    const guestItems = await this.items.find({ where: { cartId: guest.id } });
+    for (const item of guestItems) {
+      try {
+        await this.addItem(userCart, item.productId, item.quantity);
+      } catch {
+        // Skip items not available in the user cart's country.
+      }
+    }
+
+    await this.carts.delete({ id: guest.id }); // items cascade
+    return userCart;
   }
 
   /** Change the cart's country (re-prices everything on next view). */

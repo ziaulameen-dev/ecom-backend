@@ -13,7 +13,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
-import { AuthUser } from '../auth/jwt-auth.guard';
+import { AuthUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { OptionalAuthGuard } from '../auth/optional-auth.guard';
 import { Cart } from './cart.entity';
 import { CartService, CartView } from './cart.service';
@@ -98,6 +99,23 @@ export class CartController {
       await this.cart.clear(c);
       return this.cart.view(c);
     });
+  }
+
+  @Post('merge')
+  @UseGuards(JwtAuthGuard)
+  // Call right after login: fold the guest cart (cookie) into the user's cart.
+  async merge(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const cookieName = this.config.get<string>('cart.cookieName')!;
+    const cookies = (req as Request & { cookies?: Record<string, string> })
+      .cookies;
+    const merged = await this.cart.merge(user.sub, cookies?.[cookieName] ?? null);
+    // The user's cart is found by token now; drop the stale guest cookie.
+    res.clearCookie(cookieName, { path: '/' });
+    return this.cart.view(merged);
   }
 
   /**
