@@ -208,6 +208,7 @@ const badgeVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'ou
 
 function OrdersSection() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [filter, setFilter] = useState('all');
   const load = () => get('/api/admin/orders').then(setOrders).catch(() => {});
   useEffect(() => { load(); }, []);
 
@@ -234,11 +235,27 @@ function OrdersSection() {
     await load();
   }
 
+  const counts = orders.reduce<Record<string, number>>((m, o) => {
+    m[o.status] = (m[o.status] ?? 0) + 1;
+    return m;
+  }, {});
+  const filtered = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
+
   return (
     <Card>
       <CardHeader><CardTitle>Orders</CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        {orders.map((o) => (
+        <div className="flex flex-wrap gap-1 pb-2">
+          <Button variant={filter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('all')}>
+            All {orders.length}
+          </Button>
+          {Object.keys(counts).sort().map((s) => (
+            <Button key={s} variant={filter === s ? 'default' : 'outline'} size="sm" className="capitalize" onClick={() => setFilter(s)}>
+              {s} {counts[s]}
+            </Button>
+          ))}
+        </div>
+        {filtered.map((o) => (
           <div key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm border-b py-2">
             <span className="font-mono">#{o.id.slice(0, 8)}</span>
             <Badge variant={badgeVariant[o.status] || 'secondary'}>{o.status}</Badge>
