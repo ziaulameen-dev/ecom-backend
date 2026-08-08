@@ -30,6 +30,7 @@ export default function OrdersPage() {
   const [returns, setReturns] = useState<ReturnReq[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [filter, setFilter] = useState('all');
 
   const load = useCallback(async () => {
     const [o, r] = await Promise.all([
@@ -74,12 +75,43 @@ export default function OrdersPage() {
 
   const returnFor = (orderId: string) => returns.find((r) => r.orderId === orderId);
 
+  const counts = orders.reduce<Record<string, number>>((m, o) => {
+    m[o.status] = (m[o.status] ?? 0) + 1;
+    return m;
+  }, {});
+  const statuses = Object.keys(counts).sort();
+  const filtered = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
+
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-semibold mb-6">Your orders</h1>
+      <h1 className="text-2xl font-semibold mb-4">Your orders</h1>
       {orders.length === 0 && loaded && <p className="text-muted-foreground">No orders yet.</p>}
+
+      {orders.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-6">
+          <Button
+            variant={filter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilter('all')}
+          >
+            All {orders.length}
+          </Button>
+          {statuses.map((s) => (
+            <Button
+              key={s}
+              variant={filter === s ? 'default' : 'outline'}
+              size="sm"
+              className="capitalize"
+              onClick={() => setFilter(s)}
+            >
+              {s} {counts[s]}
+            </Button>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-3">
-        {orders.map((o) => {
+        {filtered.map((o) => {
           const ret = returnFor(o.id);
           return (
             <Card key={o.id}>
