@@ -10,6 +10,7 @@ Start here, then dive into whichever area you need.
 | [OTP_LOGIN.md](./OTP_LOGIN.md) | Passwordless auth: email → OTP (via Mailpit) → token; signup == login. |
 | [AUTH_SERVICE.md](./AUTH_SERVICE.md) | Auth service internals (passwordless OTP, keys, users DB). |
 | [ECOM_API.md](./ECOM_API.md) | Ecom API internals (guards, products, profile, DB). |
+| [ORDERS.md](./ORDERS.md) | Order lifecycle: checkout → pay → ship → deliver, and cancel / refund / returns (RMA) + stock flow. |
 | [NGINX_GATEWAY.md](./NGINX_GATEWAY.md) | How nginx routes the two services under one origin. |
 | [DOCKER_SETUP.md](./DOCKER_SETUP.md) | Containers, the two Postgres DBs, env, ports, run commands. |
 | [schema/](./schema/README.md) | Database schemas for both services (`auth-db`, `ecom-db`). |
