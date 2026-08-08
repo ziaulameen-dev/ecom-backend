@@ -1409,6 +1409,10 @@
                 "method": "POST",
                 "header": [
                   {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
                     "key": "Authorization",
                     "value": "Bearer {{accessToken}}"
                   }
@@ -1425,7 +1429,16 @@
                     "cancel"
                   ]
                 },
-                "description": "Pending \u2192 cancelled (order expires). Paid & not shipped \u2192 full refund + restock. Shipped/delivered \u2192 blocked (use a return)."
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Changed my mind\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Optional reason (no image). Pending \u2192 cancelled (order expires). Paid & not shipped \u2192 full refund + restock. Shipped/delivered \u2192 blocked (use a return)."
               }
             },
             {
@@ -1463,7 +1476,7 @@
                     }
                   }
                 },
-                "description": "For shipped/delivered/fulfilled orders. Saves {{returnId}}."
+                "description": "For shipped/delivered/fulfilled orders. Saves {{returnId}}. Upload evidence images with the next request."
               },
               "event": [
                 {
@@ -1477,6 +1490,72 @@
                   }
                 }
               ]
+            },
+            {
+              "name": "Upload return images (Bearer, multipart)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/returns/{{returnId}}/images",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "returns",
+                    "{{returnId}}",
+                    "images"
+                  ]
+                },
+                "description": "Attach up to 5 evidence images (JPG/PNG/WEBP/GIF, 5 MB each) to a return. Body is form-data with repeated `images` file fields.",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "images",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "images",
+                      "type": "file",
+                      "src": []
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get a return image (Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/returns/{{returnId}}/images/{{returnImageFile}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "returns",
+                    "{{returnId}}",
+                    "images",
+                    "{{returnImageFile}}"
+                  ]
+                },
+                "description": "Streams one image (owner or admin). {{returnImageFile}} is the filename part of an object key from the return's images[] (the last path segment)."
+              }
             },
             {
               "name": "List my returns (Bearer)",
@@ -1621,6 +1700,10 @@
                 "method": "POST",
                 "header": [
                   {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
                     "key": "Authorization",
                     "value": "Bearer {{accessToken}}"
                   }
@@ -1637,7 +1720,42 @@
                     "{{orderId}}",
                     "cancel"
                   ]
-                }
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Out of stock\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Optional reason. Same money/stock rules as the customer cancel."
+              }
+            },
+            {
+              "name": "Admin live events (SSE)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/events?access_token={{accessToken}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "access_token",
+                      "value": "{{accessToken}}"
+                    }
+                  ]
+                },
+                "description": "Server-Sent Events stream of live order/return changes for the admin panel. EventSource can't send headers, so the token goes in ?access_token. Open it and watch events arrive as you change orders/returns in another tab."
               }
             },
             {
@@ -1797,6 +1915,10 @@
     },
     {
       "key": "returnId",
+      "value": ""
+    },
+    {
+      "key": "returnImageFile",
       "value": ""
     },
     {

@@ -5,6 +5,11 @@ flow back (cancel, refund, return). All money is in **minor units** (paise). The
 store is **India-only (INR)**: each product carries a single INR price and there
 is one flat delivery charge.
 
+Each order gets a human-readable **reference** like `SBAZ-20260808-R6T4NW`
+(`{STORE_PREFIX}-{YYYYMMDD}-{random}`) shown in the UI and emails; the UUID stays
+the internal key. `STORE_PREFIX` and the display name (`APP_NAME`) come from env,
+so one codebase can run multiple storefronts.
+
 Everything below lives in the **ecom-api** (`src/orders/*`, `src/cart/*`,
 `src/products/*`). Payment is **Cashfree**; the **webhook is the source of
 truth** for payment state.
@@ -164,7 +169,12 @@ admin:     GET   /api/admin/returns
 
 - **create** — validates the requested quantity against what's left to return
   (ordered − already-claimed across other non-rejected returns), so a unit can't
-  be returned twice.
+  be returned twice. An optional **reason** is captured.
+- **images** — the customer can attach up to 5 evidence photos (JPG/PNG/WEBP/GIF,
+  5 MB each) via `POST /api/returns/:id/images`. Files live in **MinIO**
+  (S3-compatible); the API proxies both upload and download, so the browser never
+  talks to MinIO and there are no presigned-URL host issues. Admin views them
+  when inspecting the return.
 - **approve** — authorize; customer ships it back.
 - **receive** — admin confirms the parcel arrived. *No money/stock yet.*
 - **refund** — after inspection: **partial Cashfree refund** for the returned
@@ -203,9 +213,12 @@ authenticated TLS SMTP**. See [OTP_LOGIN.md](./OTP_LOGIN.md) for the mail setup.
 | POST | `/api/payments/webhook` | Cashfree | Payment/refund reconciliation |
 | GET | `/api/orders` (`?page&limit`) | customer | Order history |
 | GET | `/api/orders/:id` | customer | Order detail |
-| POST | `/api/orders/:id/cancel` | customer | Cancel (pending/paid) |
+| POST | `/api/orders/:id/cancel` | customer | Cancel (pending/paid); optional `{reason}` |
 | POST | `/api/orders/:id/returns` | customer | Request a return |
+| POST | `/api/returns/:id/images` | customer | Upload return evidence (multipart) |
+| GET | `/api/returns/:id/images/:file` | customer/admin | Stream a return image |
 | GET | `/api/returns` | customer | My returns |
+| GET | `/api/admin/events` | admin | SSE live order/return updates |
 | GET | `/api/admin/orders` (`?page&limit`) | admin | All orders |
 | PATCH | `/api/admin/orders/:id/status` | admin | Fulfillment transitions |
 | PATCH | `/api/admin/orders/:id/tracking` | admin | Set carrier + tracking |

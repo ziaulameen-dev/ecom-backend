@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -29,16 +30,28 @@ export class TransformInterceptor<T>
   implements NestInterceptor<T, ResponseEnvelope<T>>
 {
   intercept(
-    _context: ExecutionContext,
+    context: ExecutionContext,
     next: CallHandler,
   ): Observable<ResponseEnvelope<T>> {
+    // SSE streams emit their own MessageEvents — don't wrap them in the envelope.
+    const req = context.switchToHttp().getRequest<{ url?: string }>();
+    if (req?.url?.includes('/admin/events')) {
+      return next.handle();
+    }
     // `next.handle()` runs the route handler; we transform its output here.
     return next.handle().pipe(
-      map((data) => ({
-        success: true as const,
-        data,
-        timestamp: new Date().toISOString(),
-      })),
+      map((data) => {
+        // Don't wrap binary/streamed responses (e.g. return images) — they must
+        // pass through untouched, not be JSON-serialized.
+        if (data instanceof StreamableFile) {
+          return data as unknown as ResponseEnvelope<T>;
+        }
+        return {
+          success: true as const,
+          data,
+          timestamp: new Date().toISOString(),
+        };
+      }),
     );
   }
 }

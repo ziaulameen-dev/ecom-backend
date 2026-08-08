@@ -7,9 +7,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { randomInt } from 'crypto';
 import { AddressesService } from '../addresses/addresses.service';
 import { CartService } from '../cart/cart.service';
 import { CashfreeService } from '../cashfree/cashfree.service';
+import { EventsService } from '../events/events.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { ShippingService } from '../shipping/shipping.service';
@@ -19,6 +21,7 @@ import { Order, OrderStatus } from './order.entity';
 /** What checkout returns to the client (to complete payment with Cashfree). */
 export interface CheckoutResult {
   orderId: string;
+  reference: string;
   status: OrderStatus;
   currency: string;
   amounts: {
@@ -48,6 +51,7 @@ export class OrdersService {
     private readonly cashfree: CashfreeService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly events: EventsService,
   ) {}
 
   /**
@@ -115,6 +119,7 @@ export class OrdersService {
     // Cashfree order (its order_id == our order id).
     const order = await this.orders.save(
       Object.assign(new Order(), {
+        reference: await this.generateReference(),
         userId,
         customerEmail: email,
         status: 'pending' as OrderStatus,
@@ -150,6 +155,7 @@ export class OrdersService {
 
     return {
       orderId: order.id,
+      reference: order.reference!,
       status: order.status,
       currency,
       amounts: { subtotalMinor, shippingMinor, taxMinor, totalMinor },
@@ -157,6 +163,25 @@ export class OrdersService {
       appId: this.config.get<string>('cashfree.appId')!,
       mode: this.config.get<string>('cashfree.env')!,
     };
+  }
+
+  /**
+   * Build a human order reference: {STORE_PREFIX}-{YYYYMMDD}-{RANDOM6}, e.g.
+   * SBAZ-20260808-R6T4NW. Uses an unambiguous charset and retries on the rare
+   * collision (unique index is the final guard).
+   */
+  private async generateReference(): Promise<string> {
+    const prefix = this.config.get<string>('storePrefix') ?? 'ORD';
+    const d = new Date();
+    const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
+    const rand = (n: number) =>
+      Array.from({ length: n }, () => CHARS[randomInt(CHARS.length)]).join('');
+    for (let i = 0; i < 6; i++) {
+      const ref = `${prefix}-${ymd}-${rand(6)}`;
+      if (!(await this.orders.findOne({ where: { reference: ref } }))) return ref;
+    }
+    return `${prefix}-${ymd}-${rand(10)}`; // extremely unlikely fallback
   }
 
   // ---- Payment lifecycle (called by the webhook) ----------------------------
@@ -199,6 +224,7 @@ export class OrdersService {
       await this.orders.save(order);
       this.logger.warn(`Order ${order.id} oversold -> auto-refunded + cancelled`);
       this.mailOrder(order, 'cancelled');
+      this.events.emit({ type: 'order.updated', orderId: order.id, status: 'cancelled' });
       return;
     }
 
@@ -211,10 +237,13 @@ export class OrdersService {
     await this.carts.clear(cart);
     this.logger.log(`Order ${order.id} paid`);
     this.mailOrder(order, 'paid');
+    // A newly paid order is the first time it's visible to the admin panel.
+    this.events.emit({ type: 'order.created', orderId: order.id, status: 'paid' });
   }
 
   async markFailedByRef(ref: string): Promise<void> {
     await this.orders.update({ paymentRef: ref }, { status: 'failed' });
+    this.events.emit({ type: 'order.updated', status: 'failed' });
   }
 
   /**
@@ -239,16 +268,20 @@ export class OrdersService {
   // ---- Cancel / refund ------------------------------------------------------
 
   /** Customer cancels their own order. */
-  cancelForUser(userId: string, id: string): Promise<Order> {
-    return this.cancel(id, userId);
+  cancelForUser(userId: string, id: string, reason?: string): Promise<Order> {
+    return this.cancel(id, userId, reason);
   }
 
   /** Admin cancels any order. */
-  cancelAsAdmin(id: string): Promise<Order> {
-    return this.cancel(id, null);
+  cancelAsAdmin(id: string, reason?: string): Promise<Order> {
+    return this.cancel(id, null, reason);
   }
 
-  private async cancel(id: string, userId: string | null): Promise<Order> {
+  private async cancel(
+    id: string,
+    userId: string | null,
+    reason?: string,
+  ): Promise<Order> {
     const order = await this.loadOwned(id, userId);
     if (['shipped', 'delivered', 'fulfilled'].includes(order.status)) {
       throw new BadRequestException(
@@ -271,9 +304,11 @@ export class OrdersService {
       order.refundedMinor = order.totalMinor;
     }
     order.status = 'cancelled';
+    if (reason) order.cancelReason = reason;
     await this.orders.save(order);
     this.logger.log(`Order ${order.id} cancelled`);
     this.mailOrder(order, 'cancelled');
+    this.events.emit({ type: 'order.updated', orderId: order.id, status: 'cancelled' });
     return order;
   }
 
@@ -304,6 +339,7 @@ export class OrdersService {
     await this.orders.save(order);
     this.logger.log(`Order ${order.id} refunded (${fullyRefunded ? 'full' : 'partial'})`);
     if (fullyRefunded) this.mailOrder(order, 'refunded');
+    this.events.emit({ type: 'order.updated', orderId: order.id, status: order.status });
     return order;
   }
 
@@ -398,6 +434,7 @@ export class OrdersService {
     order.status = status;
     const saved = await this.orders.save(order);
     if (status === 'shipped') this.mailOrder(saved, 'shipped');
+    this.events.emit({ type: 'order.updated', orderId: saved.id, status });
     return saved;
   }
 
@@ -414,7 +451,7 @@ export class OrdersService {
   private mailOrder(order: Order, kind: 'paid' | 'shipped' | 'refunded' | 'cancelled') {
     if (!order.customerEmail) return;
     void this.mail.sendOrderUpdate(order.customerEmail, {
-      orderId: order.id,
+      orderId: order.reference ?? order.id,
       kind,
       totalMinor: order.totalMinor,
       currency: order.currency,

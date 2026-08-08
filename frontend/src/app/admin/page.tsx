@@ -1,17 +1,30 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { AuthImage } from '@/components/auth-image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { del, get, patch, post, put } from '@/lib/api';
+import { del, get, patch, post, put, sseUrl } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { money } from '@/lib/utils';
 
 export default function AdminPage() {
   const { ready, isAdmin } = useStore();
+  // A live "revision": incremented on every SSE event so sections re-fetch.
+  const [rev, setRev] = useState(0);
+  const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const es = new EventSource(sseUrl('/api/admin/events'));
+    es.onopen = () => setLive(true);
+    es.onerror = () => setLive(false);
+    es.onmessage = () => setRev((v) => v + 1); // orders/returns changed → reload
+    return () => es.close();
+  }, [isAdmin]);
 
   if (ready && !isAdmin) {
     return <p className="text-muted-foreground">Admins only. Sign in as an admin (admin@example.com).</p>;
@@ -19,11 +32,16 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold">Admin</h1>
+      <div className="flex items-center gap-2">
+        <h1 className="text-2xl font-semibold">Admin</h1>
+        <span className={`text-xs px-2 py-0.5 rounded-full border ${live ? 'text-green-600 border-green-600' : 'text-muted-foreground'}`}>
+          {live ? '● live' : '○ offline'}
+        </span>
+      </div>
       <ProductsSection />
       <ShippingSection />
-      <OrdersSection />
-      <ReturnsSection />
+      <OrdersSection rev={rev} />
+      <ReturnsSection rev={rev} />
     </div>
   );
 }
@@ -158,7 +176,8 @@ function ShippingSection() {
 }
 
 interface AdminOrder {
-  id: string; status: string; currency: string; totalMinor: number; refundedMinor: number;
+  id: string; reference: string | null; status: string; currency: string;
+  totalMinor: number; refundedMinor: number;
   customerEmail: string | null; carrier: string | null; trackingNumber: string | null;
 }
 
@@ -168,11 +187,11 @@ const badgeVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'ou
   failed: 'destructive', cancelled: 'destructive', disputed: 'destructive', refunded: 'outline',
 };
 
-function OrdersSection() {
+function OrdersSection({ rev }: { rev: number }) {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [filter, setFilter] = useState('all');
   const load = () => get('/api/admin/orders').then(setOrders).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [rev]);
 
   async function fulfill(id: string) {
     await patch(`/api/admin/orders/${id}/status`, { status: 'fulfilled' });
@@ -219,7 +238,7 @@ function OrdersSection() {
         </div>
         {filtered.map((o) => (
           <div key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm border-b py-2">
-            <span className="font-mono">#{o.id.slice(0, 8)}</span>
+            <span className="font-mono">{o.reference || `#${o.id.slice(0, 8)}`}</span>
             <Badge variant={badgeVariant[o.status] || 'secondary'}>{o.status}</Badge>
             <span className="text-muted-foreground">{money(o.totalMinor, o.currency)}</span>
             {o.customerEmail && <span className="text-muted-foreground hidden md:inline">{o.customerEmail}</span>}
@@ -241,12 +260,15 @@ function OrdersSection() {
   );
 }
 
-function ReturnsSection() {
-  const [returns, setReturns] = useState<
-    { id: string; orderId: string; status: string; reason: string | null; refundMinor: number }[]
-  >([]);
+interface AdminReturn {
+  id: string; orderId: string; status: string; reason: string | null;
+  refundMinor: number; images: string[];
+}
+
+function ReturnsSection({ rev }: { rev: number }) {
+  const [returns, setReturns] = useState<AdminReturn[]>([]);
   const load = () => get('/api/admin/returns').then(setReturns).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [rev]);
 
   async function act(id: string, action: 'approve' | 'reject' | 'receive' | 'refund') {
     await patch(`/api/admin/returns/${id}`, { action });
@@ -258,27 +280,40 @@ function ReturnsSection() {
       <CardHeader><CardTitle>Returns (RMA)</CardTitle></CardHeader>
       <CardContent className="space-y-2">
         {returns.map((r) => (
-          <div key={r.id} className="flex items-center gap-3 text-sm border-b py-2">
-            <span className="font-mono">order #{r.orderId.slice(0, 8)}</span>
-            <span className="text-muted-foreground">{r.reason || '—'}</span>
-            <span className="ml-auto font-medium">{r.status}</span>
-            {r.status === 'requested' && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => act(r.id, 'approve')}>Approve</Button>
-                <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject</Button>
-              </>
-            )}
-            {r.status === 'approved' && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => act(r.id, 'receive')}>Mark received</Button>
-                <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject</Button>
-              </>
-            )}
-            {r.status === 'received' && (
-              <>
-                <Button size="sm" onClick={() => act(r.id, 'refund')}>Refund + restock</Button>
-                <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject (damaged)</Button>
-              </>
+          <div key={r.id} className="border-b py-2 space-y-2">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-mono">order #{r.orderId.slice(0, 8)}</span>
+              <span className="text-muted-foreground">{r.reason || '—'}</span>
+              <span className="ml-auto font-medium">{r.status}</span>
+              {r.status === 'requested' && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => act(r.id, 'approve')}>Approve</Button>
+                  <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject</Button>
+                </>
+              )}
+              {r.status === 'approved' && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => act(r.id, 'receive')}>Mark received</Button>
+                  <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject</Button>
+                </>
+              )}
+              {r.status === 'received' && (
+                <>
+                  <Button size="sm" onClick={() => act(r.id, 'refund')}>Refund + restock</Button>
+                  <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject (damaged)</Button>
+                </>
+              )}
+            </div>
+            {r.images?.length > 0 && (
+              <div className="flex gap-2">
+                {r.images.map((key) => (
+                  <AuthImage
+                    key={key}
+                    path={`/api/returns/${r.id}/images/${key.split('/').pop()}`}
+                    className="h-16 w-16 rounded object-cover border"
+                  />
+                ))}
+              </div>
             )}
           </div>
         ))}

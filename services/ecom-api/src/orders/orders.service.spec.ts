@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { AddressesService } from '../addresses/addresses.service';
 import { CartService } from '../cart/cart.service';
 import { CashfreeService } from '../cashfree/cashfree.service';
+import { EventsService } from '../events/events.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { ShippingService } from '../shipping/shipping.service';
@@ -48,6 +49,7 @@ describe('OrdersService', () => {
       cashfree as unknown as CashfreeService,
       mail as unknown as MailService,
       { get: jest.fn() } as unknown as ConfigService,
+      { emit: jest.fn() } as unknown as EventsService,
     );
   });
 

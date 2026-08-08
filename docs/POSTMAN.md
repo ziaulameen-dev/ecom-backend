@@ -32,8 +32,10 @@ No separate environment file is needed.
   - **Addresses** — CRUD.
   - **Profile** — the ecom-api's view of the user.
   - **Checkout & Payment (Cashfree)** — checkout + a signed webhook simulator.
-  - **Orders (customer)** — history, detail, cancel, returns.
-  - **Admin — orders & returns** — status/tracking/cancel/refund + RMA transitions.
+  - **Orders (customer)** — history, detail, cancel (optional reason), returns +
+    evidence-image upload/fetch.
+  - **Admin — orders & returns** — status/tracking/cancel/refund, RMA transitions,
+    and the **SSE live-events** stream (`GET /api/admin/events?access_token=`).
 
 ## Happy-path run order
 

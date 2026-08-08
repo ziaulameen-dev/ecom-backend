@@ -91,7 +91,10 @@ export class JwtAuthGuard implements CanActivate {
    *
    *   - `bearer` -> only the Authorization header
    *   - `cookie` -> only the cookie
-   *   - absent   -> auto: prefer the Authorization header, else the cookie
+   *   - absent   -> auto: Authorization header, else cookie, else ?access_token
+   *
+   * The `?access_token=` query fallback exists ONLY for SSE (EventSource can't
+   * set headers). It's last-resort and never used when a header/cookie is present.
    */
   private extractToken(request: Request): string | null {
     const source = String(
@@ -102,7 +105,12 @@ export class JwtAuthGuard implements CanActivate {
 
     if (source === 'bearer') return bearer;
     if (source === 'cookie') return cookie;
-    return bearer ?? cookie; // auto
+    return bearer ?? cookie ?? this.fromQuery(request); // auto
+  }
+
+  private fromQuery(request: Request): string | null {
+    const q = (request.query as Record<string, unknown>)?.access_token;
+    return typeof q === 'string' && q ? q : null;
   }
 
   private fromBearer(request: Request): string | null {

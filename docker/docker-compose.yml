@@ -144,7 +144,14 @@ services:
       CASHFREE_SECRET_KEY: ${CASHFREE_SECRET_KEY}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       TAX_PERCENT: ${TAX_PERCENT}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
       APP_NAME: ${APP_NAME}
+      STORE_PREFIX: ${STORE_PREFIX}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_SECURE: ${SMTP_SECURE}
@@ -166,6 +173,29 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---- MinIO (S3-compatible object storage for return images) ---------------
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    # API on 9000, web console on 9001 (published on uncommon host ports to
+    # avoid clashes with other local stacks).
+    ports:
+      - '${MINIO_API_PORT:-9100}:9000'
+      - '${MINIO_CONSOLE_PORT:-9101}:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
   # ---- nginx gateway (the single public entry point) ------------------------
@@ -202,3 +232,4 @@ services:
 volumes:
   auth-db-data:
   ecom-db-data:
+  minio-data:

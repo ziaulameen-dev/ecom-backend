@@ -52,8 +52,8 @@ export class MailService {
       await this.transporter.sendMail({
         from: `"${app}" <${this.config.get<string>('mail.from')}>`,
         to,
-        subject: `${app}: ${subject} (#${data.orderId.slice(0, 8)})`,
-        text: `${line}\n\nOrder #${data.orderId.slice(0, 8)}\nTotal: ${total}${tracking}\n\n— ${app}`,
+        subject: `${app}: ${subject} (${data.orderId})`,
+        text: `${line}\n\nOrder ${data.orderId}\nTotal: ${total}${tracking}\n\n— ${app}`,
       });
       this.logger.log(`Order email '${data.kind}' -> ${to}`);
     } catch (err) {

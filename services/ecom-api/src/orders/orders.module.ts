@@ -7,6 +7,8 @@ import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
 import { ShippingModule } from '../shipping/shipping.module';
 import { CashfreeModule } from '../cashfree/cashfree.module';
+import { EventsModule } from '../events/events.module';
+import { StorageModule } from '../storage/storage.module';
 import { CheckoutController } from './checkout.controller';
 import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
@@ -27,6 +29,8 @@ import { WebhookEventsService } from './webhook-events.service';
     ShippingModule,
     ProductsModule,
     CashfreeModule,
+    EventsModule,
+    StorageModule,
     MailModule,
   ],
   controllers: [CheckoutController, OrdersController, WebhookController],

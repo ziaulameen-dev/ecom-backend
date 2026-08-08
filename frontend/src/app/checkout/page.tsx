@@ -20,7 +20,7 @@ interface CheckoutResult {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { cart } = useStore();
+  const { cart, refreshCart } = useStore();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selected, setSelected] = useState<string>('');
   const [err, setErr] = useState('');
@@ -54,7 +54,12 @@ export default function CheckoutPage() {
     setStatus('Confirming your order…');
     for (let i = 0; i < 15; i++) {
       const o = await get(`/api/orders/${orderId}`).catch(() => null);
-      if (o?.status === 'paid') { setStatus('Order confirmed!'); setTimeout(() => router.push('/orders'), 800); return; }
+      if (o?.status === 'paid') {
+        setStatus('Order confirmed!');
+        await refreshCart(); // backend cleared it on the webhook — sync the UI
+        setTimeout(() => router.push('/orders'), 800);
+        return;
+      }
       if (o?.status === 'cancelled' || o?.status === 'failed') { setStatus('Payment did not complete.'); setBusy(false); return; }
       await new Promise((r) => setTimeout(r, 1500));
     }

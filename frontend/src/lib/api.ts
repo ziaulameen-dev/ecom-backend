@@ -88,3 +88,21 @@ export const patch = (p: string, body?: unknown) =>
 export const put = (p: string, body?: unknown) =>
   api(p, { method: 'PUT', body: body ? JSON.stringify(body) : undefined });
 export const del = (p: string) => api(p, { method: 'DELETE' });
+
+/** POST multipart form data (e.g. file uploads). Retries once on 401. */
+export const postForm = (p: string, form: FormData) =>
+  api(p, { method: 'POST', body: form });
+
+/**
+ * Fetch a protected binary (image) with the bearer token and return an object
+ * URL — `<img>` can't send an Authorization header, so we fetch then blob it.
+ */
+export async function fetchImageUrl(path: string): Promise<string> {
+  const res = await raw(path);
+  if (!res.ok) throw new ApiError(res.status, 'image failed');
+  return URL.createObjectURL(await res.blob());
+}
+
+/** Build an SSE URL with the access token in the query (EventSource can't set headers). */
+export const sseUrl = (path: string) =>
+  `${BASE}${path}?access_token=${encodeURIComponent(tokens.access ?? '')}`;

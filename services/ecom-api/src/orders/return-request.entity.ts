@@ -46,6 +46,10 @@ export class ReturnRequest {
   @Column({ type: 'jsonb' })
   items!: ReturnLine[];
 
+  // MinIO object keys for customer-uploaded evidence images.
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  images!: string[];
+
   // The amount refunded when the return completes (minor units).
   @Column({ name: 'refund_minor', type: 'int', default: 0 })
   refundMinor!: number;

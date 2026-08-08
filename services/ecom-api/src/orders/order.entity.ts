@@ -43,6 +43,12 @@ export class Order {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  // Human-readable order reference (e.g. SBAZ-20260808-R6T4NW). The UUID above
+  // stays the internal key; this is what customers/admins see.
+  @Index({ unique: true })
+  @Column({ type: 'varchar', nullable: true })
+  reference!: string | null;
+
   @Index()
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
@@ -88,6 +94,10 @@ export class Order {
 
   @Column({ name: 'tracking_number', type: 'varchar', nullable: true })
   trackingNumber!: string | null;
+
+  // Optional free-text reason captured when an order is cancelled (analytics).
+  @Column({ name: 'cancel_reason', type: 'text', nullable: true })
+  cancelReason!: string | null;
 
   @OneToMany(() => OrderItem, (i) => i.order, { cascade: true })
   items!: OrderItem[];

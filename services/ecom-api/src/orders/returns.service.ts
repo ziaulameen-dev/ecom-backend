@@ -8,8 +8,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
 import { CashfreeService } from '../cashfree/cashfree.service';
+import { EventsService } from '../events/events.service';
+import { StorageService } from '../storage/storage.service';
 import { OrdersService } from './orders.service';
 import { ReturnLine, ReturnRequest, ReturnStatus } from './return-request.entity';
+import { Readable } from 'stream';
+
+/** Allowed image types + limits for return evidence uploads. */
+const MAX_IMAGES = 5;
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
 
 /** RMA: customer return requests + admin approve/receive → refund + restock. */
 @Injectable()
@@ -22,6 +34,8 @@ export class ReturnsService {
     private readonly orders: OrdersService,
     private readonly cashfree: CashfreeService,
     private readonly products: ProductsService,
+    private readonly storage: StorageService,
+    private readonly events: EventsService,
   ) {}
 
   /** Customer requests a return on a delivered/shipped order. */
@@ -58,15 +72,55 @@ export class ReturnsService {
       }
     }
 
-    return this.returns.save(
+    const saved = await this.returns.save(
       this.returns.create({
         orderId,
         userId,
         reason: reason ?? null,
         items,
+        images: [],
         status: 'requested',
       }),
     );
+    this.events.emit({ type: 'return.created', returnId: saved.id, orderId });
+    return saved;
+  }
+
+  /** Attach customer-uploaded evidence images to a return (owner only). */
+  async addImages(
+    userId: string,
+    returnId: string,
+    files: { buffer: Buffer; mimetype: string }[],
+  ): Promise<ReturnRequest> {
+    const rr = await this.returns.findOne({ where: { id: returnId, userId } });
+    if (!rr) throw new NotFoundException('Return not found');
+    if (!files?.length) throw new BadRequestException('No images uploaded');
+    if ((rr.images?.length ?? 0) + files.length > MAX_IMAGES) {
+      throw new BadRequestException(`At most ${MAX_IMAGES} images per return`);
+    }
+    for (const f of files) {
+      const ext = EXT_BY_MIME[f.mimetype];
+      if (!ext) throw new BadRequestException('Only JP/PNG/WEBP/GIF images allowed');
+      const key = await this.storage.put(`returns/${returnId}`, f.buffer, f.mimetype, ext);
+      rr.images = [...(rr.images ?? []), key];
+    }
+    const saved = await this.returns.save(rr);
+    this.events.emit({ type: 'return.updated', returnId: rr.id, orderId: rr.orderId });
+    return saved;
+  }
+
+  /** Stream one of a return's images. Owner (by userId) or admin (userId=null). */
+  async getImage(
+    returnId: string,
+    key: string,
+    userId: string | null,
+  ): Promise<{ stream: Readable; contentType: string }> {
+    const where = userId ? { id: returnId, userId } : { id: returnId };
+    const rr = await this.returns.findOne({ where });
+    if (!rr || !rr.images?.includes(key)) {
+      throw new NotFoundException('Image not found');
+    }
+    return this.storage.get(key);
   }
 
   listForUser(userId: string): Promise<ReturnRequest[]> {
@@ -115,7 +169,9 @@ export class ReturnsService {
     // approve / reject / receive are pure status changes (no money/stock yet).
     if (next !== 'refunded') {
       rr.status = next;
-      return this.returns.save(rr);
+      const saved = await this.returns.save(rr);
+      this.events.emit({ type: 'return.updated', returnId: rr.id, orderId: rr.orderId, status: next });
+      return saved;
     }
 
     // refund: only now (goods received + inspected) do we return money + stock.
@@ -144,6 +200,8 @@ export class ReturnsService {
     rr.refundMinor = refundMinor;
     rr.status = 'refunded';
     this.logger.log(`Return ${rr.id} refunded ${refundMinor} + restocked`);
-    return this.returns.save(rr);
+    const saved = await this.returns.save(rr);
+    this.events.emit({ type: 'return.updated', returnId: rr.id, orderId: rr.orderId, status: 'refunded' });
+    return saved;
   }
 }

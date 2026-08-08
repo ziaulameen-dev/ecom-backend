@@ -3,6 +3,8 @@ import { Repository } from 'typeorm';
 import { OrdersService } from './orders.service';
 import { ProductsService } from '../products/products.service';
 import { CashfreeService } from '../cashfree/cashfree.service';
+import { EventsService } from '../events/events.service';
+import { StorageService } from '../storage/storage.service';
 import { ReturnRequest } from './return-request.entity';
 import { ReturnsService } from './returns.service';
 
@@ -46,6 +48,8 @@ describe('ReturnsService', () => {
       orders as unknown as OrdersService,
       cashfree as unknown as CashfreeService,
       products as unknown as ProductsService,
+      { put: jest.fn(), get: jest.fn() } as unknown as StorageService,
+      { emit: jest.fn() } as unknown as EventsService,
     );
   });
 

@@ -21,8 +21,11 @@ export default () => ({
     cookieName: process.env.AUTH_COOKIE_NAME ?? 'access_token',
   },
 
-  // Brand + SMTP for order emails (dev: Mailpit).
+  // Brand + SMTP for order emails (dev: Mailpit). STORE_PREFIX prefixes the
+  // human order reference; APP_NAME is the store's display name. Both from env
+  // so one codebase can serve multiple storefronts.
   appName: process.env.APP_NAME ?? 'Ecom',
+  storePrefix: process.env.STORE_PREFIX ?? 'ORD',
   mail: {
     host: process.env.SMTP_HOST ?? 'localhost',
     port: parseInt(process.env.SMTP_PORT ?? '1025', 10),
@@ -50,6 +53,17 @@ export default () => ({
 
   // Flat GST applied to the subtotal (percent). India-only for now.
   taxPercent: parseInt(process.env.TAX_PERCENT ?? '0', 10),
+
+  // MinIO (S3-compatible) object storage — holds return-request images. The API
+  // proxies uploads/downloads, so the browser never talks to MinIO directly.
+  storage: {
+    endpoint: process.env.MINIO_ENDPOINT ?? 'localhost',
+    port: parseInt(process.env.MINIO_PORT ?? '9000', 10),
+    useSSL: (process.env.MINIO_USE_SSL ?? 'false').toLowerCase() === 'true',
+    accessKey: process.env.MINIO_ACCESS_KEY ?? 'minioadmin',
+    secretKey: process.env.MINIO_SECRET_KEY ?? 'minioadmin',
+    bucket: process.env.MINIO_BUCKET ?? 'returns',
+  },
 
   // Guest cart cookie — identifies an anonymous cart until the user logs in.
   cart: {
