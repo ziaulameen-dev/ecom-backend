@@ -19,7 +19,6 @@ import { OrderItem } from './orders/order-item.entity';
 import { Order } from './orders/order.entity';
 import { OrdersModule } from './orders/orders.module';
 import { ReturnRequest } from './orders/return-request.entity';
-import { ProductPrice } from './products/product-price.entity';
 import { Product } from './products/product.entity';
 import { ProductsModule } from './products/products.module';
 import { ProfileModule } from './profile/profile.module';
@@ -51,7 +50,6 @@ import { ShippingModule } from './shipping/shipping.module';
         database: config.get<string>('db.database'),
         entities: [
           Product,
-          ProductPrice,
           ShippingRate,
           Cart,
           CartItem,

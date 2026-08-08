@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -16,16 +15,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateProductDto } from './dto/create-product.dto';
-import { SetPriceDto } from './dto/set-price.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 
-const DEFAULT_COUNTRY = 'US';
-
 /**
- * Product routes.
- *   Public : browse the catalog priced for a `?country=` (default US).
- *   Admin  : product CRUD + per-country price management (JWT + role check).
+ * Product routes (India-only, INR).
+ *   Public : browse the catalog.
+ *   Admin  : product CRUD, including the INR price (JWT + role check).
  */
 @Controller('products')
 export class ProductsController {
@@ -35,13 +31,12 @@ export class ProductsController {
 
   @Get()
   findAll(
-    @Query('country') country?: string,
     @Query('search') search?: string,
     @Query('category') category?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.products.findAllForCountry(country || DEFAULT_COUNTRY, {
+    return this.products.findAll({
       search,
       category,
       page: page ? parseInt(page, 10) : undefined,
@@ -50,8 +45,8 @@ export class ProductsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Query('country') country?: string) {
-    return this.products.findOneForCountry(id, country || DEFAULT_COUNTRY);
+  findOne(@Param('id') id: string) {
+    return this.products.findOne(id);
   }
 
   // ---- Admin ----------------------------------------------------------------
@@ -76,27 +71,5 @@ export class ProductsController {
   @Roles('admin')
   remove(@Param('id') id: string) {
     return this.products.remove(id);
-  }
-
-  @Get(':id/prices')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
-  listPrices(@Param('id') id: string) {
-    return this.products.listPrices(id);
-  }
-
-  @Put(':id/prices')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
-  setPrice(@Param('id') id: string, @Body() dto: SetPriceDto) {
-    return this.products.setPrice(id, dto);
-  }
-
-  @Delete(':id/prices/:country')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
-  deletePrice(@Param('id') id: string, @Param('country') country: string) {
-    return this.products.deletePrice(id, country);
   }
 }

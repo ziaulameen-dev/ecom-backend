@@ -13,15 +13,14 @@ export interface CartLine {
   productId: string;
   name: string;
   quantity: number;
-  unitAmountMinor: number | null;
+  unitAmountMinor: number;
   lineTotalMinor: number;
   available: boolean;
   stock: number;
 }
 export interface Cart {
   id: string;
-  country: string;
-  currency: string | null;
+  currency: string;
   items: CartLine[];
   itemCount: number;
   subtotalMinor: number;
@@ -30,10 +29,8 @@ export interface Cart {
 interface StoreValue {
   user: User | null;
   cart: Cart | null;
-  country: string;
   isAdmin: boolean;
   ready: boolean;
-  setCountry: (c: string) => Promise<void>;
   refreshCart: () => Promise<void>;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
@@ -52,7 +49,6 @@ export const useStore = () => {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [cart, setCart] = useState<Cart | null>(null);
-  const [country, setCountryState] = useState('IN');
   const [ready, setReady] = useState(false);
 
   const applyCart = (c: Cart) => {
@@ -61,9 +57,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshCart = useCallback(async () => {
-    const c = await get(`/api/cart?country=${localStorage.getItem('ecom_country') || 'IN'}`);
-    applyCart(c);
-    setCountryState(c.country);
+    applyCart(await get('/api/cart'));
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -78,21 +72,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const setCountry = useCallback(async (c: string) => {
-    localStorage.setItem('ecom_country', c);
-    const updated = await patch('/api/cart', { country: c }).catch(() => null);
-    if (updated) applyCart(updated);
-    setCountryState(c);
-  }, []);
-
   // Cart mutations return the updated cart view — apply it (also stores the id).
   const addItem = useCallback(async (productId: string, quantity = 1) => {
-    const c = await post('/api/cart/items', {
-      productId,
-      quantity,
-      country: localStorage.getItem('ecom_country') || 'IN',
-    });
-    applyCart(c);
+    applyCart(await post('/api/cart/items', { productId, quantity }));
   }, []);
 
   const setItemQty = useCallback(async (productId: string, quantity: number) => {
@@ -122,10 +104,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         cart,
-        country,
         isAdmin: !!user?.roles?.includes('admin'),
         ready,
-        setCountry,
         refreshCart,
         refreshUser,
         logout,

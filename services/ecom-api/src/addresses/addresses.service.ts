@@ -33,7 +33,7 @@ export class AddressesService {
     const address = await this.addresses.save(
       this.addresses.create({
         ...dto,
-        country: dto.country.toUpperCase(),
+        country: 'IN', // India-only store
         userId,
         isDefault,
       }),
@@ -49,7 +49,6 @@ export class AddressesService {
   ): Promise<Address> {
     const address = await this.get(userId, id);
     Object.assign(address, dto);
-    if (dto.country) address.country = dto.country.toUpperCase();
     const saved = await this.addresses.save(address);
     if (dto.isDefault) await this.clearOtherDefaults(userId, id);
     return saved;

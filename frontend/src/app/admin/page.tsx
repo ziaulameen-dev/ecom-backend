@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { del, get, patch, post, put } from '@/lib/api';
 import { useStore } from '@/lib/store';
-import { COUNTRIES, money } from '@/lib/utils';
+import { money } from '@/lib/utils';
 
 export default function AdminPage() {
   const { ready, isAdmin } = useStore();
@@ -21,7 +21,6 @@ export default function AdminPage() {
     <div className="space-y-8">
       <h1 className="text-2xl font-semibold">Admin</h1>
       <ProductsSection />
-      <PricesSection />
       <ShippingSection />
       <OrdersSection />
       <ReturnsSection />
@@ -32,22 +31,27 @@ export default function AdminPage() {
 interface AdminProduct {
   id: string; name: string; stock: number; category: string | null;
   description: string | null; imageUrl: string | null;
+  price: { currency: string; amountMinor: number };
 }
 
 function ProductsSection() {
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [stockEdits, setStockEdits] = useState<Record<string, number>>({});
-  const [form, setForm] = useState({ name: '', stock: 0, category: '', imageUrl: '', description: '' });
+  const [priceEdits, setPriceEdits] = useState<Record<string, number>>({});
+  const [form, setForm] = useState({ name: '', stock: 0, priceMinor: 0, category: '', imageUrl: '', description: '' });
   const [msg, setMsg] = useState('');
 
-  const load = () => get('/api/products?country=US').then(setProducts).catch(() => {});
+  const load = () => get('/api/products').then(setProducts).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  async function saveStock(id: string) {
-    const stock = stockEdits[id];
-    if (stock == null) return;
-    await patch(`/api/products/${id}`, { stock: Number(stock) });
+  async function saveRow(id: string) {
+    const body: Record<string, number> = {};
+    if (stockEdits[id] != null) body.stock = Number(stockEdits[id]);
+    if (priceEdits[id] != null) body.priceMinor = Number(priceEdits[id]);
+    if (Object.keys(body).length === 0) return;
+    await patch(`/api/products/${id}`, body);
     setStockEdits((s) => { const n = { ...s }; delete n[id]; return n; });
+    setPriceEdits((s) => { const n = { ...s }; delete n[id]; return n; });
     await load();
   }
   async function create() {
@@ -56,12 +60,13 @@ function ProductsSection() {
       await post('/api/products', {
         name: form.name,
         stock: Number(form.stock),
+        priceMinor: Number(form.priceMinor),
         category: form.category || undefined,
         imageUrl: form.imageUrl || undefined,
         description: form.description || undefined,
       });
-      setForm({ name: '', stock: 0, category: '', imageUrl: '', description: '' });
-      setMsg('Created ✓ — set its per-country price below.');
+      setForm({ name: '', stock: 0, priceMinor: 0, category: '', imageUrl: '', description: '' });
+      setMsg('Created ✓');
       await load();
     } catch (e) { setMsg((e as Error).message); }
   }
@@ -73,40 +78,44 @@ function ProductsSection() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Products & stock</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Products, price & stock</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        {products.map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-3 text-sm border-b py-2">
-            <span className="font-medium">{p.name}</span>
-            {p.category && <span className="text-muted-foreground capitalize">{p.category}</span>}
-            <div className="ml-auto flex items-center gap-2">
-              <Label className="text-muted-foreground">Stock</Label>
-              <Input
-                type="number"
-                className="h-9 w-24"
-                value={stockEdits[p.id] ?? p.stock}
-                onChange={(e) => setStockEdits((s) => ({ ...s, [p.id]: Number(e.target.value) }))}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={stockEdits[p.id] == null || stockEdits[p.id] === p.stock}
-                onClick={() => saveStock(p.id)}
-              >
-                Save
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => remove(p.id)}>Delete</Button>
+        {products.map((p) => {
+          const dirty = stockEdits[p.id] != null || priceEdits[p.id] != null;
+          return (
+            <div key={p.id} className="flex flex-wrap items-center gap-3 text-sm border-b py-2">
+              <span className="font-medium">{p.name}</span>
+              {p.category && <span className="text-muted-foreground capitalize">{p.category}</span>}
+              <div className="ml-auto flex items-center gap-2">
+                <Label className="text-muted-foreground">Price (paise)</Label>
+                <Input
+                  type="number"
+                  className="h-9 w-28"
+                  value={priceEdits[p.id] ?? p.price.amountMinor}
+                  onChange={(e) => setPriceEdits((s) => ({ ...s, [p.id]: Number(e.target.value) }))}
+                />
+                <Label className="text-muted-foreground">Stock</Label>
+                <Input
+                  type="number"
+                  className="h-9 w-24"
+                  value={stockEdits[p.id] ?? p.stock}
+                  onChange={(e) => setStockEdits((s) => ({ ...s, [p.id]: Number(e.target.value) }))}
+                />
+                <Button variant="outline" size="sm" disabled={!dirty} onClick={() => saveRow(p.id)}>Save</Button>
+                <Button variant="ghost" size="sm" onClick={() => remove(p.id)}>Delete</Button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         <div className="pt-2 border-t">
           <p className="text-sm font-medium mb-2">Add product</p>
           <div className="grid gap-2 sm:grid-cols-6 items-end">
             <div className="space-y-1 sm:col-span-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="space-y-1"><Label>Price (paise)</Label><Input type="number" value={form.priceMinor} onChange={(e) => setForm({ ...form, priceMinor: Number(e.target.value) })} /></div>
             <div className="space-y-1"><Label>Stock</Label><Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })} /></div>
             <div className="space-y-1"><Label>Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></div>
-            <div className="space-y-1 sm:col-span-2"><Label>Image URL</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} /></div>
+            <div className="space-y-1 sm:col-span-3"><Label>Image URL</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} /></div>
             <div className="space-y-1 sm:col-span-5"><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
             <Button disabled={form.name.length < 2} onClick={create}>Add</Button>
           </div>
@@ -117,79 +126,32 @@ function ProductsSection() {
   );
 }
 
-function PricesSection() {
-  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
-  const [f, setF] = useState({ productId: '', country: 'IN', currency: 'inr', amountMinor: 0 });
-  const [msg, setMsg] = useState('');
-
-  useEffect(() => { get('/api/products?country=IN').then((p) => { setProducts(p); if (p[0]) setF((s) => ({ ...s, productId: p[0].id })); }); }, []);
-
-  async function save() {
-    setMsg('');
-    try {
-      await put(`/api/products/${f.productId}/prices`, { country: f.country, currency: f.currency, amountMinor: Number(f.amountMinor) });
-      setMsg('Saved ✓');
-    } catch (e) { setMsg((e as Error).message); }
-  }
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>Product price by country</CardTitle></CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-5 items-end">
-        <div className="space-y-1 sm:col-span-2">
-          <Label>Product</Label>
-          <select className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm" value={f.productId} onChange={(e) => setF({ ...f, productId: e.target.value })}>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
-        <div className="space-y-1"><Label>Country</Label>
-          <select className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm" value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>
-            {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
-          </select>
-        </div>
-        <div className="space-y-1"><Label>Currency</Label><Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} /></div>
-        <div className="space-y-1"><Label>Amount (minor)</Label><Input type="number" value={f.amountMinor} onChange={(e) => setF({ ...f, amountMinor: Number(e.target.value) })} /></div>
-        <Button onClick={save} className="sm:col-span-5 sm:w-auto">Save price</Button>
-        {msg && <p className="text-sm sm:col-span-5">{msg}</p>}
-      </CardContent>
-    </Card>
-  );
-}
-
 function ShippingSection() {
-  const [rates, setRates] = useState<{ country: string; currency: string; amountMinor: number }[]>([]);
-  const [f, setF] = useState({ country: 'IN', currency: 'inr', amountMinor: 0 });
+  const [amountMinor, setAmountMinor] = useState(0);
   const [msg, setMsg] = useState('');
 
-  const load = () => get('/api/shipping-rates').then(setRates).catch(() => setRates([]));
+  const load = () =>
+    get('/api/shipping-rate').then((r) => setAmountMinor(r.amountMinor ?? 0)).catch(() => {});
   useEffect(() => { load(); }, []);
 
   async function save() {
     setMsg('');
     try {
-      await put('/api/shipping-rates', { country: f.country, currency: f.currency, amountMinor: Number(f.amountMinor) });
+      await put('/api/shipping-rate', { amountMinor: Number(amountMinor) });
       setMsg('Saved ✓'); await load();
     } catch (e) { setMsg((e as Error).message); }
   }
 
   return (
     <Card>
-      <CardHeader><CardTitle>Delivery charge by country</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Delivery charge</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-4 items-end">
-          <div className="space-y-1"><Label>Country</Label>
-            <select className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm" value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>
-              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1"><Label>Currency</Label><Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} /></div>
-          <div className="space-y-1"><Label>Amount (minor)</Label><Input type="number" value={f.amountMinor} onChange={(e) => setF({ ...f, amountMinor: Number(e.target.value) })} /></div>
+          <div className="space-y-1"><Label>Amount (paise)</Label><Input type="number" value={amountMinor} onChange={(e) => setAmountMinor(Number(e.target.value))} /></div>
           <Button onClick={save}>Save rate</Button>
         </div>
         {msg && <p className="text-sm">{msg}</p>}
-        <div className="text-sm text-muted-foreground">
-          {rates.map((r) => <span key={r.country} className="mr-4">{r.country}: {money(r.amountMinor, r.currency)}</span>)}
-        </div>
+        <p className="text-sm text-muted-foreground">Flat delivery charge: {money(amountMinor)}</p>
       </CardContent>
     </Card>
   );

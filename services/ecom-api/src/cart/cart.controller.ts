@@ -6,7 +6,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   Req,
   Res,
   UseGuards,
@@ -19,7 +18,6 @@ import { OptionalAuthGuard } from '../auth/optional-auth.guard';
 import { Cart } from './cart.entity';
 import { CartService, CartView } from './cart.service';
 import { AddItemDto } from './dto/add-item.dto';
-import { SetCountryDto } from './dto/set-country.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 
 /**
@@ -39,18 +37,8 @@ export class CartController {
   async get(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-    @Query('country') country?: string,
   ) {
-    return this.withCart(req, res, country, (c) => this.cart.view(c));
-  }
-
-  @Patch()
-  async setCountry(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-    @Body() dto: SetCountryDto,
-  ) {
-    return this.withCart(req, res, dto.country, (c) => this.cart.view(c));
+    return this.withCart(req, res, (c) => this.cart.view(c));
   }
 
   @Post('items')
@@ -59,7 +47,7 @@ export class CartController {
     @Res({ passthrough: true }) res: Response,
     @Body() dto: AddItemDto,
   ) {
-    return this.withCart(req, res, dto.country, async (c) => {
+    return this.withCart(req, res, async (c) => {
       await this.cart.addItem(c, dto.productId, dto.quantity);
       return this.cart.view(c);
     });
@@ -72,7 +60,7 @@ export class CartController {
     @Param('productId') productId: string,
     @Body() dto: UpdateItemDto,
   ) {
-    return this.withCart(req, res, undefined, async (c) => {
+    return this.withCart(req, res, async (c) => {
       await this.cart.setItemQuantity(c, productId, dto.quantity);
       return this.cart.view(c);
     });
@@ -84,7 +72,7 @@ export class CartController {
     @Res({ passthrough: true }) res: Response,
     @Param('productId') productId: string,
   ) {
-    return this.withCart(req, res, undefined, async (c) => {
+    return this.withCart(req, res, async (c) => {
       await this.cart.removeItem(c, productId);
       return this.cart.view(c);
     });
@@ -95,7 +83,7 @@ export class CartController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.withCart(req, res, undefined, async (c) => {
+    return this.withCart(req, res, async (c) => {
       await this.cart.clear(c);
       return this.cart.view(c);
     });
@@ -116,25 +104,21 @@ export class CartController {
   }
 
   /**
-   * Resolve the caller's cart (user or guest), optionally switch its country,
-   * (re)set the guest cookie, run the operation, and return the cart view.
+   * Resolve the caller's cart (user or guest), (re)set the guest cookie, run the
+   * operation, and return the cart view.
    */
   private async withCart(
     req: Request,
     res: Response,
-    country: string | undefined,
     op: (cart: Cart) => Promise<CartView>,
   ): Promise<CartView> {
     const user = (req as Request & { user?: AuthUser }).user;
     const cartId = this.readCartId(req);
 
-    let { cart } = await this.cart.resolveOrCreate(
-      { userId: user?.sub ?? null, cookieCartId: cartId },
-      country,
-    );
-    if (country && cart.country !== country.toUpperCase()) {
-      cart = await this.cart.setCountry(cart, country);
-    }
+    const { cart } = await this.cart.resolveOrCreate({
+      userId: user?.sub ?? null,
+      cookieCartId: cartId,
+    });
 
     // Keep guest carts addressable: set the cookie (same-origin browsers) — the
     // cart id is also in the response body so header-based clients (mobile /

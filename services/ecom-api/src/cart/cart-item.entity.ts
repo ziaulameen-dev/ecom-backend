@@ -11,8 +11,8 @@ import { Cart } from './cart.entity';
 
 /**
  * A line in a cart: a product + quantity. The PRICE is not stored here — it's
- * resolved live from the product's per-country price at view/checkout time, so
- * price/currency changes are always reflected. (The order snapshots price.)
+ * resolved live from the product's INR price at view/checkout time, so price
+ * changes are always reflected. (The order snapshots price.)
  */
 @Entity('cart_items')
 @Unique(['cartId', 'productId'])

@@ -2,16 +2,14 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { ProductPrice } from './product-price.entity';
 
 /**
  * A product, persisted in the ecom-api's OWN Postgres database.
  *
- * Price is NOT on the product — it's per country (see ProductPrice), because
- * this is a global store where admins set prices per market/currency.
+ * India-only store: a single INR price lives on the product itself
+ * (`priceMinor`, in paise).
  */
 @Entity('products')
 export class Product {
@@ -33,8 +31,9 @@ export class Product {
   @Column({ default: 0 })
   stock!: number;
 
-  @OneToMany(() => ProductPrice, (p) => p.product)
-  prices!: ProductPrice[];
+  // INR price in the smallest unit (paise).
+  @Column({ name: 'price_minor', type: 'int', default: 0 })
+  priceMinor!: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

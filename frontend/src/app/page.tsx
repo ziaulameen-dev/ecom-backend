@@ -17,11 +17,11 @@ interface ProductView {
   imageUrl: string | null;
   category: string | null;
   stock: number;
-  price: { currency: string; amountMinor: number } | null;
+  price: { currency: string; amountMinor: number };
 }
 
 export default function CatalogPage() {
-  const { country, addItem } = useStore();
+  const { addItem } = useStore();
   const [products, setProducts] = useState<ProductView[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export default function CatalogPage() {
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({ country });
+    const params = new URLSearchParams();
     if (search) params.set('search', search);
     if (category) params.set('category', category);
     const t = setTimeout(() => {
@@ -40,7 +40,7 @@ export default function CatalogPage() {
         .finally(() => setLoading(false));
     }, 200); // debounce search
     return () => clearTimeout(t);
-  }, [country, search, category]);
+  }, [search, category]);
 
   const categories = useMemo(
     () => Array.from(new Set(products.map((p) => p.category).filter(Boolean))) as string[],
@@ -60,9 +60,7 @@ export default function CatalogPage() {
     <div>
       <div className="flex flex-col gap-1 mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Shop</h1>
-        <p className="text-muted-foreground">
-          Prices shown for <strong>{country}</strong> — change country in the top bar.
-        </p>
+        <p className="text-muted-foreground">All prices in INR.</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -128,16 +126,16 @@ export default function CatalogPage() {
                   <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{p.description}</p>
                 )}
                 <div className="mt-3 text-xl font-bold">
-                  {money(p.price?.amountMinor ?? null, p.price?.currency ?? null)}
+                  {money(p.price.amountMinor, p.price.currency)}
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {p.price ? (p.stock > 0 ? `${p.stock} in stock` : 'Out of stock') : 'Unavailable here'}
+                  {p.stock > 0 ? `${p.stock} in stock` : 'Out of stock'}
                 </div>
               </CardContent>
               <CardFooter>
                 <Button
                   className="w-full"
-                  disabled={!p.price || p.stock < 1 || adding === p.id}
+                  disabled={p.stock < 1 || adding === p.id}
                   onClick={() => add(p.id)}
                 >
                   {adding === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add to cart'}

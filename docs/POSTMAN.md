@@ -10,7 +10,7 @@ exposed through the nginx gateway (auth + ecom-api), organised into folders.
 2. Key collection variables (pre-filled with sensible defaults):
    - `baseUrl` = `http://localhost:3008` (the nginx gateway)
    - `mailpitUrl` = `http://localhost:8028` (dev inbox)
-   - `email` = `admin@example.com`, `country` = `IN`
+   - `email` = `admin@example.com`
    - `cashfreeSecretKey` = **(set this yourself)** — your `CASHFREE_SECRET_KEY`,
      only needed to sign the simulated webhook.
    - `accessToken`, `refreshToken`, `csrfToken`, `otp`, `productId`, `cartId`,
@@ -26,9 +26,9 @@ No separate environment file is needed.
   account deletion, refresh/logout/logout-all, and the one **cookie-mode**
   example (everything else uses Bearer).
 - **Ecom API**
-  - **Catalog** — public list/detail + admin product & per-country price CRUD.
-  - **Shipping rates (admin)** — per-country delivery charges.
-  - **Cart (guest + user)** — add/update/remove/clear, set country, and merge.
+  - **Catalog** — public list/detail + admin product CRUD (INR price on the product).
+  - **Delivery charge** — the single flat delivery charge (public GET, admin PUT).
+  - **Cart (guest + user)** — add/update/remove/clear and merge.
   - **Addresses** — CRUD.
   - **Profile** — the ecom-api's view of the user.
   - **Checkout & Payment (Cashfree)** — checkout + a signed webhook simulator.
