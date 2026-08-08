@@ -82,6 +82,11 @@ export function SiteHeader() {
               </Badge>
             )}
           </Link>
+          {me?.roles?.includes('admin') && (
+            <Link href="/admin" className="ml-1 hidden md:inline-flex">
+              <Button size="sm" variant="outline">Admin</Button>
+            </Link>
+          )}
           {!me && (
             <Link href="/login" className="ml-1 hidden sm:inline-flex">
               <Button size="sm">Login</Button>

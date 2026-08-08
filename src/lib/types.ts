@@ -148,6 +148,67 @@ export interface OrderItem {
   unitAmountMinor: number;
   quantity: number;
 }
+/** Raw admin shapes (management views). */
+export interface AdminVariant {
+  id: string;
+  productId: string;
+  sku: string | null;
+  priceMinor: number;
+  stock: number;
+  valueIds: string[];
+  images: string[];
+  listedSeparately: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+}
+export interface AdminProduct {
+  id: string;
+  name: string;
+  slug: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  category: string | null;
+  categoryId: string | null;
+  active: boolean;
+  stock: number;
+  priceMinor: number;
+  variants: AdminVariant[];
+  createdAt: string;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  type: 'percent' | 'fixed';
+  value: number;
+  minSubtotalMinor: number;
+  maxDiscountMinor: number | null;
+  maxRedemptions: number | null;
+  timesRedeemed: number;
+  active: boolean;
+  expiresAt: string | null;
+}
+
+export interface AdminReturn {
+  id: string;
+  orderId: string;
+  userId: string;
+  status: 'requested' | 'approved' | 'rejected' | 'received' | 'refunded';
+  reason: string | null;
+  items: { productId: string; quantity: number }[];
+  images: string[];
+  refundMinor: number;
+  createdAt: string;
+}
+
+export interface AdminOrder extends Order {
+  customerEmail: string | null;
+  carrier: string | null;
+  trackingNumber: string | null;
+  refundedMinor: number;
+  cancelReason: string | null;
+}
+
 export interface Order {
   id: string;
   reference: string | null;
