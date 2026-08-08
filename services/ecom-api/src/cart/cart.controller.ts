@@ -48,32 +48,32 @@ export class CartController {
     @Body() dto: AddItemDto,
   ) {
     return this.withCart(req, res, async (c) => {
-      await this.cart.addItem(c, dto.productId, dto.quantity);
+      await this.cart.addItem(c, dto.productId, dto.variantId ?? null, dto.quantity);
       return this.cart.view(c);
     });
   }
 
-  @Patch('items/:productId')
+  @Patch('items/:itemId')
   async updateItem(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-    @Param('productId') productId: string,
+    @Param('itemId') itemId: string,
     @Body() dto: UpdateItemDto,
   ) {
     return this.withCart(req, res, async (c) => {
-      await this.cart.setItemQuantity(c, productId, dto.quantity);
+      await this.cart.setItemQuantity(c, itemId, dto.quantity);
       return this.cart.view(c);
     });
   }
 
-  @Delete('items/:productId')
+  @Delete('items/:itemId')
   async removeItem(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-    @Param('productId') productId: string,
+    @Param('itemId') itemId: string,
   ) {
     return this.withCart(req, res, async (c) => {
-      await this.cart.removeItem(c, productId);
+      await this.cart.removeItem(c, itemId);
       return this.cart.view(c);
     });
   }

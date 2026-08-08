@@ -1,18 +1,26 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
 import { CartItem } from './cart-item.entity';
 import { Cart } from './cart.entity';
 
-/** A cart line (India / INR). */
+/** A cart line (India / INR). One line per product+variant combination. */
 export interface CartLineView {
+  id: string; // cart_item id (used to update/remove)
   productId: string;
+  variantId: string | null;
   name: string;
+  label: string | null; // variant options, e.g. "Black / Steel"
+  imageUrl: string | null;
   quantity: number;
   unitAmountMinor: number;
   lineTotalMinor: number;
-  available: boolean; // product still exists
+  available: boolean;
   stock: number;
 }
 
@@ -34,6 +42,10 @@ export interface CartOwner {
 /** INR is the only currency (India-only store). */
 const CURRENCY = 'inr';
 
+/** Guard against malformed X-Cart-Id headers (avoids a Postgres uuid cast 500). */
+const isUuid = (s: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 @Injectable()
 export class CartService {
   constructor(
@@ -44,8 +56,7 @@ export class CartService {
 
   /**
    * Find the caller's cart (a logged-in user's cart by userId, else the guest
-   * cart from the cookie), creating one if needed. Returns the cart and whether
-   * it was just created (so the controller can set the cookie).
+   * cart from the cookie), creating one if needed.
    */
   async resolveOrCreate(
     owner: CartOwner,
@@ -58,7 +69,7 @@ export class CartService {
       return { cart: await this.create(owner.userId), created: true };
     }
 
-    if (owner.cookieCartId) {
+    if (owner.cookieCartId && isUuid(owner.cookieCartId)) {
       const guest = await this.carts.findOne({
         where: { id: owner.cookieCartId, userId: IsNull() },
       });
@@ -67,11 +78,7 @@ export class CartService {
     return { cart: await this.create(null), created: true };
   }
 
-  /**
-   * Merge a guest cart (from the cookie) into the user's cart on login: add
-   * each guest line (summing quantities, capping at stock), then delete the
-   * guest cart.
-   */
+  /** Merge a guest cart into the user's cart on login. */
   async merge(userId: string, guestCartId: string | null): Promise<Cart> {
     const { cart: userCart } = await this.resolveOrCreate({
       userId,
@@ -87,9 +94,9 @@ export class CartService {
     const guestItems = await this.items.find({ where: { cartId: guest.id } });
     for (const item of guestItems) {
       try {
-        await this.addItem(userCart, item.productId, item.quantity);
+        await this.addItem(userCart, item.productId, item.variantId, item.quantity);
       } catch {
-        // Skip items that no longer exist.
+        // Skip items that no longer exist / are invalid.
       }
     }
 
@@ -97,35 +104,44 @@ export class CartService {
     return userCart;
   }
 
-  async addItem(cart: Cart, productId: string, quantity: number): Promise<void> {
-    const product = await this.products.findEntity(productId);
-    if (!product) throw new NotFoundException('Product not found');
-
-    const existing = await this.items.findOne({
-      where: { cartId: cart.id, productId },
-    });
-    const desired = (existing?.quantity ?? 0) + quantity;
-    const capped = Math.min(Math.max(desired, 0), product.stock);
-    await this.upsertQuantity(cart, productId, capped, existing ?? undefined);
-  }
-
-  async setItemQuantity(
+  /**
+   * Add a product (with optional variant) to the cart. A product that HAS
+   * variants requires a variantId; a simple product must not carry one.
+   */
+  async addItem(
     cart: Cart,
     productId: string,
+    variantId: string | null,
     quantity: number,
   ): Promise<void> {
-    const existing = await this.items.findOne({
-      where: { cartId: cart.id, productId },
-    });
-    if (!existing && quantity <= 0) return;
-    const product = await this.products.findEntity(productId);
-    if (!product) throw new NotFoundException('Product not found');
-    const capped = Math.min(Math.max(quantity, 0), product.stock);
-    await this.upsertQuantity(cart, productId, capped, existing ?? undefined);
+    const hasVariants = (await this.products.variantCount(productId)) > 0;
+    if (hasVariants && !variantId) {
+      throw new BadRequestException('Please select a variant');
+    }
+    if (!hasVariants) variantId = null;
+
+    const line = await this.products.resolveLine(productId, variantId);
+    if (!line || !line.available) {
+      throw new BadRequestException('Product is not available');
+    }
+
+    const existing = await this.findLine(cart.id, productId, variantId);
+    const desired = (existing?.quantity ?? 0) + quantity;
+    const capped = Math.min(Math.max(desired, 0), line.stock);
+    await this.upsertQuantity(cart, productId, variantId, capped, existing);
   }
 
-  async removeItem(cart: Cart, productId: string): Promise<void> {
-    await this.items.delete({ cartId: cart.id, productId });
+  /** Set a line's quantity by its cart_item id. */
+  async setItemQuantity(cart: Cart, itemId: string, quantity: number): Promise<void> {
+    const existing = await this.items.findOne({ where: { id: itemId, cartId: cart.id } });
+    if (!existing) return;
+    const line = await this.products.resolveLine(existing.productId, existing.variantId);
+    const capped = Math.min(Math.max(quantity, 0), line?.stock ?? 0);
+    await this.upsertQuantity(cart, existing.productId, existing.variantId, capped, existing);
+  }
+
+  async removeItem(cart: Cart, itemId: string): Promise<void> {
+    await this.items.delete({ id: itemId, cartId: cart.id });
   }
 
   async clear(cart: Cart): Promise<void> {
@@ -143,18 +159,22 @@ export class CartService {
     let subtotal = 0;
 
     for (const row of rows) {
-      const product = await this.products.findEntity(row.productId);
-      const unit = product?.priceMinor ?? 0;
+      const line = await this.products.resolveLine(row.productId, row.variantId);
+      const unit = line?.unitAmountMinor ?? 0;
       const lineTotal = unit * row.quantity;
       subtotal += lineTotal;
       lines.push({
+        id: row.id,
         productId: row.productId,
-        name: product?.name ?? '(removed)',
+        variantId: row.variantId,
+        name: line?.name ?? '(removed)',
+        label: line?.label ?? null,
+        imageUrl: line?.imageUrl ?? null,
         quantity: row.quantity,
         unitAmountMinor: unit,
         lineTotalMinor: lineTotal,
-        available: product != null,
-        stock: product?.stock ?? 0,
+        available: !!line?.available,
+        stock: line?.stock ?? 0,
       });
     }
 
@@ -181,17 +201,29 @@ export class CartService {
     return this.carts.save(this.carts.create({ userId }));
   }
 
+  private findLine(
+    cartId: string,
+    productId: string,
+    variantId: string | null,
+  ): Promise<CartItem | null> {
+    return this.items.findOne({
+      where: { cartId, productId, variantId: variantId ?? IsNull() },
+    });
+  }
+
   private async upsertQuantity(
     cart: Cart,
     productId: string,
+    variantId: string | null,
     quantity: number,
-    existing?: CartItem,
+    existing?: CartItem | null,
   ): Promise<void> {
     if (quantity <= 0) {
       if (existing) await this.items.delete({ id: existing.id });
       return;
     }
-    const row = existing ?? this.items.create({ cartId: cart.id, productId });
+    const row =
+      existing ?? this.items.create({ cartId: cart.id, productId, variantId });
     row.quantity = quantity;
     await this.items.save(row);
   }

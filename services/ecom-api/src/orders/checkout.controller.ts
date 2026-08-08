@@ -18,6 +18,6 @@ export class CheckoutController {
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 600_000 } }) // 10 / 10 min per IP
   async checkout(@CurrentUser() user: AuthUser, @Body() dto: CheckoutDto) {
-    return this.orders.checkout(user.sub, user.email, dto.addressId);
+    return this.orders.checkout(user.sub, user.email, dto.addressId, dto.couponCode);
   }
 }

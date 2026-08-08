@@ -73,6 +73,13 @@ export class Order {
   @Column({ name: 'tax_minor', type: 'int', default: 0 })
   taxMinor!: number;
 
+  // Coupon discount applied (paise) + the code used, if any.
+  @Column({ name: 'discount_minor', type: 'int', default: 0 })
+  discountMinor!: number;
+
+  @Column({ name: 'coupon_code', type: 'varchar', nullable: true })
+  couponCode!: string | null;
+
   @Column({ name: 'total_minor', type: 'int' })
   totalMinor!: number;
 

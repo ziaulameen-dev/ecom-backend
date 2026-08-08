@@ -25,9 +25,17 @@ export class OrderItem {
   @Column({ name: 'product_id', type: 'uuid' })
   productId!: string;
 
+  // The purchased variant (null for a simple product). Drives stock moves.
+  @Column({ name: 'variant_id', type: 'uuid', nullable: true })
+  variantId!: string | null;
+
   // Snapshot of the product name + unit price at order time.
   @Column()
   name!: string;
+
+  // Snapshot of the variant options label, e.g. "Black / Steel".
+  @Column({ name: 'variant_label', type: 'varchar', nullable: true })
+  variantLabel!: string | null;
 
   @Column({ name: 'unit_amount_minor', type: 'int' })
   unitAmountMinor!: number;

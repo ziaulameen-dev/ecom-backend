@@ -11,6 +11,7 @@ import { randomInt } from 'crypto';
 import { AddressesService } from '../addresses/addresses.service';
 import { CartService } from '../cart/cart.service';
 import { CashfreeService } from '../cashfree/cashfree.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { EventsService } from '../events/events.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
@@ -26,6 +27,7 @@ export interface CheckoutResult {
   currency: string;
   amounts: {
     subtotalMinor: number;
+    discountMinor: number;
     shippingMinor: number;
     taxMinor: number;
     totalMinor: number;
@@ -52,6 +54,7 @@ export class OrdersService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly events: EventsService,
+    private readonly coupons: CouponsService,
   ) {}
 
   /**
@@ -64,6 +67,7 @@ export class OrdersService {
     userId: string,
     email: string,
     addressId: string,
+    couponCode?: string,
   ): Promise<CheckoutResult> {
     const { cart } = await this.carts.resolveOrCreate({
       userId,
@@ -92,7 +96,9 @@ export class OrdersService {
       items.push(
         Object.assign(new OrderItem(), {
           productId: line.productId,
+          variantId: line.variantId,
           name: line.name,
+          variantLabel: line.label,
           unitAmountMinor: line.unitAmountMinor,
           quantity: line.quantity,
         }),
@@ -102,14 +108,25 @@ export class OrdersService {
     const currency = view.currency; // always 'inr'
     const subtotalMinor = view.subtotalMinor;
 
+    // Optional coupon → discount off the subtotal.
+    let discountMinor = 0;
+    let appliedCode: string | null = null;
+    if (couponCode) {
+      const result = await this.coupons.validate(couponCode, subtotalMinor);
+      discountMinor = result.discountMinor;
+      appliedCode = result.code;
+    }
+
     const rate = await this.shipping.get();
     const shippingMinor = rate?.amountMinor ?? 0;
 
-    // Flat GST on the subtotal (percent from config; 0 by default).
+    // Flat GST on the discounted subtotal (percent from config; 0 by default).
     const taxPercent = this.config.get<number>('taxPercent') ?? 0;
-    const taxMinor = Math.round((subtotalMinor * taxPercent) / 100);
+    const taxMinor = Math.round(
+      ((subtotalMinor - discountMinor) * taxPercent) / 100,
+    );
 
-    const totalMinor = subtotalMinor + shippingMinor + taxMinor;
+    const totalMinor = subtotalMinor - discountMinor + shippingMinor + taxMinor;
 
     if (totalMinor < MIN_CHARGE_MINOR) {
       throw new BadRequestException('Order total is below the minimum chargeable amount');
@@ -127,6 +144,8 @@ export class OrdersService {
         subtotalMinor,
         shippingMinor,
         taxMinor,
+        discountMinor,
+        couponCode: appliedCode,
         totalMinor,
         shippingAddress: {
           fullName: address.fullName,
@@ -158,7 +177,7 @@ export class OrdersService {
       reference: order.reference!,
       status: order.status,
       currency,
-      amounts: { subtotalMinor, shippingMinor, taxMinor, totalMinor },
+      amounts: { subtotalMinor, discountMinor, shippingMinor, taxMinor, totalMinor },
       paymentSessionId: cf.paymentSessionId,
       appId: this.config.get<string>('cashfree.appId')!,
       mode: this.config.get<string>('cashfree.env')!,
@@ -202,7 +221,12 @@ export class OrdersService {
     const decremented: OrderItem[] = [];
     let oversold = false;
     for (const item of order.items) {
-      if (await this.products.decrementStock(item.productId, item.quantity)) {
+      const ok = await this.products.decrementLineStock(
+        item.productId,
+        item.variantId,
+        item.quantity,
+      );
+      if (ok) {
         decremented.push(item);
       } else {
         oversold = true;
@@ -230,6 +254,9 @@ export class OrdersService {
 
     order.status = 'paid';
     await this.orders.save(order);
+    if (order.couponCode) {
+      await this.coupons.redeem(order.couponCode).catch(() => undefined);
+    }
     const { cart } = await this.carts.resolveOrCreate({
       userId: order.userId,
       cookieCartId: null,
@@ -360,10 +387,14 @@ export class OrdersService {
     );
   }
 
-  /** Restore stock for a set of order lines. */
+  /** Restore stock for a set of order lines (variant-aware). */
   async restock(items: OrderItem[]): Promise<void> {
     for (const item of items) {
-      await this.products.incrementStock(item.productId, item.quantity);
+      await this.products.incrementLineStock(
+        item.productId,
+        item.variantId,
+        item.quantity,
+      );
     }
   }
 

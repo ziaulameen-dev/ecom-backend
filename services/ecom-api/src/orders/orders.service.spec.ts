@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { AddressesService } from '../addresses/addresses.service';
 import { CartService } from '../cart/cart.service';
 import { CashfreeService } from '../cashfree/cashfree.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { EventsService } from '../events/events.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
@@ -22,7 +23,7 @@ function makeRepo() {
 
 describe('OrdersService', () => {
   let repo: jest.Mocked<Repository<Order>>;
-  let products: { decrementStock: jest.Mock; incrementStock: jest.Mock };
+  let products: { decrementLineStock: jest.Mock; incrementLineStock: jest.Mock };
   let cashfree: { refund: jest.Mock };
   let carts: { resolveOrCreate: jest.Mock; clear: jest.Mock };
   let mail: { sendOrderUpdate: jest.Mock };
@@ -31,8 +32,8 @@ describe('OrdersService', () => {
   beforeEach(() => {
     repo = makeRepo();
     products = {
-      decrementStock: jest.fn(),
-      incrementStock: jest.fn().mockResolvedValue(undefined),
+      decrementLineStock: jest.fn(),
+      incrementLineStock: jest.fn().mockResolvedValue(undefined),
     };
     cashfree = { refund: jest.fn().mockResolvedValue(undefined) };
     carts = {
@@ -50,6 +51,7 @@ describe('OrdersService', () => {
       mail as unknown as MailService,
       { get: jest.fn() } as unknown as ConfigService,
       { emit: jest.fn() } as unknown as EventsService,
+      { redeem: jest.fn(), validate: jest.fn() } as unknown as CouponsService,
     );
   });
 
@@ -70,7 +72,7 @@ describe('OrdersService', () => {
   describe('markPaidByRef', () => {
     it('marks paid + clears cart when all stock decrements succeed', async () => {
       repo.findOne.mockResolvedValue(pendingOrder());
-      products.decrementStock.mockResolvedValue(true);
+      products.decrementLineStock.mockResolvedValue(true);
       await service.markPaidByRef('cf_1');
       expect(carts.clear).toHaveBeenCalled();
       expect(cashfree.refund).not.toHaveBeenCalled();
@@ -81,12 +83,13 @@ describe('OrdersService', () => {
     it('auto-refunds + cancels + rolls back stock on oversell', async () => {
       repo.findOne.mockResolvedValue(pendingOrder());
       // first line ok, second line out of stock
-      products.decrementStock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      products.decrementLineStock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
       await service.markPaidByRef('cf_1');
       expect(cashfree.refund).toHaveBeenCalledWith(
         expect.objectContaining({ cfOrderId: 'cf_1', amountMinor: 300 }),
       );
-      expect(products.incrementStock).toHaveBeenCalledWith('p1', 1); // rollback
+      // rollback the first line (product-level, no variant in this fixture)
+      expect(products.incrementLineStock).toHaveBeenCalledWith('p1', undefined, 1);
       expect(carts.clear).not.toHaveBeenCalled();
       const saved = repo.save.mock.calls.at(-1)![0] as Order;
       expect(saved.status).toBe('cancelled');
@@ -96,7 +99,7 @@ describe('OrdersService', () => {
     it('is idempotent (ignores already-paid orders)', async () => {
       repo.findOne.mockResolvedValue({ ...pendingOrder(), status: 'paid' } as Order);
       await service.markPaidByRef('cf_1');
-      expect(products.decrementStock).not.toHaveBeenCalled();
+      expect(products.decrementLineStock).not.toHaveBeenCalled();
     });
   });
 

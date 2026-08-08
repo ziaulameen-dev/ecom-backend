@@ -32,7 +32,7 @@ describe('ReturnsService', () => {
   let repo: jest.Mocked<Repository<ReturnRequest>>;
   let orders: { loadOwned: jest.Mock; saveEntity: jest.Mock };
   let cashfree: { refund: jest.Mock };
-  let products: { incrementStock: jest.Mock };
+  let products: { incrementLineStock: jest.Mock };
   let service: ReturnsService;
 
   beforeEach(() => {
@@ -42,7 +42,7 @@ describe('ReturnsService', () => {
       saveEntity: jest.fn().mockResolvedValue(undefined),
     };
     cashfree = { refund: jest.fn().mockResolvedValue(undefined) };
-    products = { incrementStock: jest.fn().mockResolvedValue(undefined) };
+    products = { incrementLineStock: jest.fn().mockResolvedValue(undefined) };
     service = new ReturnsService(
       repo,
       orders as unknown as OrdersService,
@@ -104,7 +104,7 @@ describe('ReturnsService', () => {
       expect(cashfree.refund).toHaveBeenCalledWith(
         expect.objectContaining({ cfOrderId: 'cf_1', amountMinor: 100 }),
       ); // 1 x 100
-      expect(products.incrementStock).toHaveBeenCalledWith('p1', 1);
+      expect(products.incrementLineStock).toHaveBeenCalledWith('p1', null, 1);
       expect(rr.status).toBe('refunded');
       expect(rr.refundMinor).toBe(100);
     });

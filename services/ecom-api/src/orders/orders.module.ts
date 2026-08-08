@@ -7,6 +7,7 @@ import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
 import { ShippingModule } from '../shipping/shipping.module';
 import { CashfreeModule } from '../cashfree/cashfree.module';
+import { CouponsModule } from '../coupons/coupons.module';
 import { EventsModule } from '../events/events.module';
 import { StorageModule } from '../storage/storage.module';
 import { CheckoutController } from './checkout.controller';
@@ -29,6 +30,7 @@ import { WebhookEventsService } from './webhook-events.service';
     ShippingModule,
     ProductsModule,
     CashfreeModule,
+    CouponsModule,
     EventsModule,
     StorageModule,
     MailModule,

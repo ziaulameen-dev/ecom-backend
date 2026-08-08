@@ -78,6 +78,18 @@ export interface CatalogQuery {
   includeInactive?: boolean;
 }
 
+/** A resolved cart/order line: product (+ optional variant) with live pricing. */
+export interface PurchasableLine {
+  productId: string;
+  variantId: string | null;
+  name: string;
+  label: string | null; // variant options, e.g. "Black / Steel"
+  unitAmountMinor: number;
+  stock: number;
+  available: boolean;
+  imageUrl: string | null;
+}
+
 /** Product business logic: catalog reads + admin product/variant management. */
 @Injectable()
 export class ProductsService implements OnModuleInit {
@@ -228,6 +240,57 @@ export class ProductsService implements OnModuleInit {
     return this.variants.findOne({ where: { id } });
   }
 
+  /** How many variants a product has (0 = simple product). */
+  variantCount(productId: string): Promise<number> {
+    return this.variants.count({ where: { productId } });
+  }
+
+  /**
+   * Resolve a cart/order line (product + optional variant) into the live
+   * name/price/stock/label used for display and checkout. Returns null if the
+   * product no longer exists.
+   */
+  async resolveLine(
+    productId: string,
+    variantId: string | null,
+  ): Promise<PurchasableLine | null> {
+    const product = await this.products.findOne({ where: { id: productId } });
+    if (!product) return null;
+
+    if (variantId) {
+      const v = await this.variants.findOne({ where: { id: variantId } });
+      if (!v || v.productId !== productId) {
+        return {
+          productId, variantId, name: product.name, label: null,
+          unitAmountMinor: 0, stock: 0, available: false,
+          imageUrl: product.imageUrl,
+        };
+      }
+      const opts = this.resolveOptions(v.valueIds, await this.optionLookup());
+      return {
+        productId,
+        variantId,
+        name: product.name,
+        label: opts.map((o) => o.value).join(' / ') || null,
+        unitAmountMinor: v.priceMinor,
+        stock: v.stock,
+        available: product.active,
+        imageUrl: v.images[0] ?? product.imageUrl,
+      };
+    }
+
+    return {
+      productId,
+      variantId: null,
+      name: product.name,
+      label: null,
+      unitAmountMinor: product.priceMinor,
+      stock: product.stock,
+      available: product.active,
+      imageUrl: product.imageUrl,
+    };
+  }
+
   // ---- Stock (product-level; variant-level added with the cart refactor) ----
 
   async decrementStock(productId: string, qty: number): Promise<boolean> {
@@ -247,6 +310,40 @@ export class ProductsService implements OnModuleInit {
       .set({ stock: () => `stock + ${qty}` })
       .where('id = :id', { id: productId })
       .execute();
+  }
+
+  /** Atomic variant stock decrement (guarded), for variant-based lines. */
+  async decrementVariantStock(variantId: string, qty: number): Promise<boolean> {
+    const res = await this.variants
+      .createQueryBuilder()
+      .update(ProductVariant)
+      .set({ stock: () => `stock - ${qty}` })
+      .where('id = :id AND stock >= :qty', { id: variantId, qty })
+      .execute();
+    return (res.affected ?? 0) > 0;
+  }
+
+  async incrementVariantStock(variantId: string, qty: number): Promise<void> {
+    await this.variants
+      .createQueryBuilder()
+      .update(ProductVariant)
+      .set({ stock: () => `stock + ${qty}` })
+      .where('id = :id', { id: variantId })
+      .execute();
+  }
+
+  /** Decrement the right stock for a line (variant if present, else product). */
+  decrementLineStock(productId: string, variantId: string | null, qty: number): Promise<boolean> {
+    return variantId
+      ? this.decrementVariantStock(variantId, qty)
+      : this.decrementStock(productId, qty);
+  }
+
+  /** Restore the right stock for a line. */
+  incrementLineStock(productId: string, variantId: string | null, qty: number): Promise<void> {
+    return variantId
+      ? this.incrementVariantStock(variantId, qty)
+      : this.incrementStock(productId, qty);
   }
 
   // ---- Admin: products ------------------------------------------------------

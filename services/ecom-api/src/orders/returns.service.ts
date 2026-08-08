@@ -192,7 +192,12 @@ export class ReturnsService {
       });
     }
     for (const line of rr.items) {
-      await this.products.incrementStock(line.productId, line.quantity);
+      const oi = order.items.find((i) => i.productId === line.productId);
+      await this.products.incrementLineStock(
+        line.productId,
+        oi?.variantId ?? null,
+        line.quantity,
+      );
     }
     order.refundedMinor = Math.min(order.totalMinor, order.refundedMinor + refundMinor);
     await this.orders.saveEntity(order); // persists returnedQuantity + refundedMinor

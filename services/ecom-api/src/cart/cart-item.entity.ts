@@ -10,12 +10,13 @@ import {
 import { Cart } from './cart.entity';
 
 /**
- * A line in a cart: a product + quantity. The PRICE is not stored here — it's
- * resolved live from the product's INR price at view/checkout time, so price
- * changes are always reflected. (The order snapshots price.)
+ * A line in a cart: a product (+ optional variant) + quantity. PRICE/stock are
+ * NOT stored here — resolved live from the variant (or base product) at
+ * view/checkout time, so changes are always reflected. (The order snapshots
+ * price.) A product with variants has one line per chosen variant.
  */
 @Entity('cart_items')
-@Unique(['cartId', 'productId'])
+@Unique(['cartId', 'productId', 'variantId'])
 export class CartItem {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -30,6 +31,10 @@ export class CartItem {
 
   @Column({ name: 'product_id', type: 'uuid' })
   productId!: string;
+
+  // Null for a simple product with no variants; set to the chosen variant id.
+  @Column({ name: 'variant_id', type: 'uuid', nullable: true })
+  variantId!: string | null;
 
   @Column({ type: 'int' })
   quantity!: number;
