@@ -11,7 +11,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
  * nginx forwards /api/* here.
  */
 async function bootstrap() {
-  // `rawBody: true` keeps the raw request buffer (req.rawBody) so the Stripe
+  // `rawBody: true` keeps the raw request buffer (req.rawBody) so the Cashfree
   // webhook can verify its signature against the exact bytes.
   const app = await NestFactory.create(AppModule, { rawBody: true });
 

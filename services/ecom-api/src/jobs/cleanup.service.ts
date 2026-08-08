@@ -7,8 +7,8 @@ const GUEST_CART_TTL_DAYS = 30;
 const PENDING_ORDER_TTL_MINUTES = 60;
 
 /**
- * Scheduled housekeeping: cancel stale pending orders (+ their PaymentIntents)
- * and delete long-abandoned guest carts.
+ * Scheduled housekeeping: cancel stale pending orders (unpaid Cashfree orders
+ * expire on their own) and delete long-abandoned guest carts.
  */
 @Injectable()
 export class CleanupService {

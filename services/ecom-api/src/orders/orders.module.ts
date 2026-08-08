@@ -6,7 +6,7 @@ import { CartModule } from '../cart/cart.module';
 import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
 import { ShippingModule } from '../shipping/shipping.module';
-import { StripeModule } from '../stripe/stripe.module';
+import { CashfreeModule } from '../cashfree/cashfree.module';
 import { CheckoutController } from './checkout.controller';
 import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
@@ -17,7 +17,7 @@ import { ReturnsService } from './returns.service';
 import { WebhookController } from './webhook.controller';
 import { WebhookEventsService } from './webhook-events.service';
 
-/** Checkout, orders, Stripe payment webhook, and admin order management. */
+/** Checkout, orders, Cashfree payment webhook, and admin order management. */
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem, ReturnRequest]),
@@ -26,7 +26,7 @@ import { WebhookEventsService } from './webhook-events.service';
     AddressesModule,
     ShippingModule,
     ProductsModule,
-    StripeModule,
+    CashfreeModule,
     MailModule,
   ],
   controllers: [CheckoutController, OrdersController, WebhookController],

@@ -32,7 +32,7 @@ export class ProductPrice {
   @Column({ type: 'varchar', length: 2 })
   country!: string;
 
-  // ISO 4217, lowercase for Stripe (e.g. "usd", "eur", "inr").
+  // ISO 4217 currency code (e.g. "INR").
   @Column({ type: 'varchar', length: 3 })
   currency!: string;
 

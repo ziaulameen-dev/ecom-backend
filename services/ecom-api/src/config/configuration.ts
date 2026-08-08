@@ -33,12 +33,23 @@ export default () => ({
     pass: process.env.SMTP_PASS ?? '',
   },
 
-  // Stripe (payments). Secret + webhook secret are server-only.
-  stripe: {
-    secretKey: process.env.STRIPE_SECRET_KEY ?? '',
-    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
+  // Cashfree (India, INR) payment gateway. Server-side only; the secret key
+  // also verifies webhook signatures. The public base URL (ngrok in dev) is used
+  // for Cashfree return/notify URLs.
+  cashfree: {
+    env: process.env.CASHFREE_ENV ?? 'sandbox',
+    appId: process.env.CASHFREE_APP_ID ?? '',
+    secretKey: process.env.CASHFREE_SECRET_KEY ?? '',
+    apiVersion: '2023-08-01',
+    baseUrl:
+      (process.env.CASHFREE_ENV ?? 'sandbox') === 'production'
+        ? 'https://api.cashfree.com/pg'
+        : 'https://sandbox.cashfree.com/pg',
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? 'http://localhost:3008',
   },
+
+  // Flat GST applied to the subtotal (percent). India-only for now.
+  taxPercent: parseInt(process.env.TAX_PERCENT ?? '0', 10),
 
   // Guest cart cookie — identifies an anonymous cart until the user logs in.
   cart: {

@@ -139,9 +139,11 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      CASHFREE_ENV: ${CASHFREE_ENV}
+      CASHFREE_APP_ID: ${CASHFREE_APP_ID}
+      CASHFREE_SECRET_KEY: ${CASHFREE_SECRET_KEY}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      TAX_PERCENT: ${TAX_PERCENT}
       APP_NAME: ${APP_NAME}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
@@ -182,7 +184,7 @@ services:
 
   # ---- ngrok (dev only: public HTTPS tunnel to the gateway for webhooks) -----
   # Not started by `npm run up` (it's under the "tunnel" profile). Start with
-  # `npm run tunnel`. It exposes https://$NGROK_DOMAIN -> nginx:3008, so Stripe
+  # `npm run tunnel`. It exposes https://$NGROK_DOMAIN -> nginx:3008, so Cashfree
   # can reach POST /api/payments/webhook. Inspector UI on host 4041.
   ngrok:
     image: ngrok/ngrok:latest

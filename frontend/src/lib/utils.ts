@@ -19,8 +19,5 @@ export function money(amountMinor: number | null, currency: string | null) {
   }
 }
 
-export const COUNTRIES = [
-  { code: 'US', label: 'United States' },
-  { code: 'IN', label: 'India' },
-  { code: 'GB', label: 'United Kingdom' },
-];
+// India-only storefront (Cashfree / INR).
+export const COUNTRIES = [{ code: 'IN', label: 'India' }];
