@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,8 +9,6 @@ import { Label } from '@/components/ui/label';
 import { get, patch, post, put } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { COUNTRIES, money } from '@/lib/utils';
-
-const ORDER_STATUSES = ['pending', 'paid', 'failed', 'cancelled', 'refunded', 'fulfilled', 'shipped', 'delivered'];
 
 export default function AdminPage() {
   const { ready, isAdmin } = useStore();
@@ -107,18 +106,42 @@ function ShippingSection() {
   );
 }
 
+interface AdminOrder {
+  id: string; status: string; currency: string; totalMinor: number; refundedMinor: number;
+  customerEmail: string | null; carrier: string | null; trackingNumber: string | null;
+}
+
+const badgeVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  paid: 'default', shipped: 'default', delivered: 'default', fulfilled: 'default',
+  pending: 'secondary', processing: 'secondary',
+  failed: 'destructive', cancelled: 'destructive', disputed: 'destructive', refunded: 'outline',
+};
+
 function OrdersSection() {
-  const [orders, setOrders] = useState<{ id: string; status: string; currency: string; totalMinor: number }[]>([]);
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
   const load = () => get('/api/admin/orders').then(setOrders).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  async function setStatus(id: string, status: string) {
-    await patch(`/api/admin/orders/${id}/status`, { status });
+  async function fulfill(id: string) {
+    await patch(`/api/admin/orders/${id}/status`, { status: 'fulfilled' });
+    await load();
+  }
+  async function ship(id: string) {
+    const carrier = window.prompt('Carrier (e.g. UPS)?');
+    if (!carrier) return;
+    const trackingNumber = window.prompt('Tracking number?');
+    if (!trackingNumber) return;
+    await patch(`/api/admin/orders/${id}/tracking`, { carrier, trackingNumber });
+    await patch(`/api/admin/orders/${id}/status`, { status: 'shipped' });
+    await load();
+  }
+  async function deliver(id: string) {
+    await patch(`/api/admin/orders/${id}/status`, { status: 'delivered' });
     await load();
   }
   async function refund(id: string) {
     if (!confirm('Full refund this order?')) return;
-    await post(`/api/admin/orders/${id}/refund`, {}); // omit amount = full
+    await post(`/api/admin/orders/${id}/refund`, {});
     await load();
   }
 
@@ -127,20 +150,21 @@ function OrdersSection() {
       <CardHeader><CardTitle>Orders</CardTitle></CardHeader>
       <CardContent className="space-y-2">
         {orders.map((o) => (
-          <div key={o.id} className="flex items-center gap-3 text-sm border-b py-2">
+          <div key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm border-b py-2">
             <span className="font-mono">#{o.id.slice(0, 8)}</span>
+            <Badge variant={badgeVariant[o.status] || 'secondary'}>{o.status}</Badge>
             <span className="text-muted-foreground">{money(o.totalMinor, o.currency)}</span>
-            <select className="ml-auto h-9 rounded-md border border-input bg-background px-2" value={o.status} onChange={(e) => setStatus(o.id, e.target.value)}>
-              {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={['refunded', 'cancelled', 'pending', 'failed'].includes(o.status)}
-              onClick={() => refund(o.id)}
-            >
-              Refund
-            </Button>
+            {o.customerEmail && <span className="text-muted-foreground hidden md:inline">{o.customerEmail}</span>}
+            {o.refundedMinor > 0 && <span className="text-xs text-muted-foreground">refunded {money(o.refundedMinor, o.currency)}</span>}
+            {o.trackingNumber && <span className="text-xs">📦 {o.carrier} {o.trackingNumber}</span>}
+            <div className="ml-auto flex gap-1">
+              {o.status === 'paid' && <Button variant="outline" size="sm" onClick={() => fulfill(o.id)}>Fulfill</Button>}
+              {['paid', 'fulfilled'].includes(o.status) && <Button variant="outline" size="sm" onClick={() => ship(o.id)}>Ship</Button>}
+              {o.status === 'shipped' && <Button variant="outline" size="sm" onClick={() => deliver(o.id)}>Delivered</Button>}
+              {['paid', 'fulfilled', 'shipped', 'delivered'].includes(o.status) && (
+                <Button variant="ghost" size="sm" onClick={() => refund(o.id)}>Refund</Button>
+              )}
+            </div>
           </div>
         ))}
         {orders.length === 0 && <p className="text-sm text-muted-foreground">No orders.</p>}
@@ -177,10 +201,16 @@ function ReturnsSection() {
               </>
             )}
             {r.status === 'approved' && (
-              <Button variant="outline" size="sm" onClick={() => act(r.id, 'receive')}>Mark received</Button>
+              <>
+                <Button variant="outline" size="sm" onClick={() => act(r.id, 'receive')}>Mark received</Button>
+                <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject</Button>
+              </>
             )}
             {r.status === 'received' && (
-              <Button size="sm" onClick={() => act(r.id, 'refund')}>Refund + restock</Button>
+              <>
+                <Button size="sm" onClick={() => act(r.id, 'refund')}>Refund + restock</Button>
+                <Button variant="ghost" size="sm" onClick={() => act(r.id, 'reject')}>Reject (damaged)</Button>
+              </>
             )}
           </div>
         ))}
