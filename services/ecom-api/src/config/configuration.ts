@@ -21,6 +21,18 @@ export default () => ({
     cookieName: process.env.AUTH_COOKIE_NAME ?? 'access_token',
   },
 
+  // Brand + SMTP for order emails (dev: Mailpit).
+  appName: process.env.APP_NAME ?? 'Ecom',
+  mail: {
+    host: process.env.SMTP_HOST ?? 'localhost',
+    port: parseInt(process.env.SMTP_PORT ?? '1025', 10),
+    from: process.env.MAIL_FROM ?? 'no-reply@ecom.local',
+    // Auth/TLS only in production; dev targets Mailpit.
+    secure: (process.env.SMTP_SECURE ?? 'false').toLowerCase() === 'true',
+    user: process.env.SMTP_USER ?? '',
+    pass: process.env.SMTP_PASS ?? '',
+  },
+
   // Stripe (payments). Secret + webhook secret are server-only.
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',

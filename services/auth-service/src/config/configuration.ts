@@ -80,6 +80,11 @@ export default () => ({
     host: process.env.SMTP_HOST ?? 'localhost',
     port: parseInt(process.env.SMTP_PORT ?? '1025', 10),
     from: process.env.MAIL_FROM ?? 'no-reply@ecom.local',
+    // Auth/TLS are used ONLY in production (real SMTP). In dev the transport
+    // targets Mailpit (no auth, no TLS) so nothing leaves the machine.
+    secure: (process.env.SMTP_SECURE ?? 'false').toLowerCase() === 'true',
+    user: process.env.SMTP_USER ?? '',
+    pass: process.env.SMTP_PASS ?? '',
   },
 
   // One-time login codes (2-step login).

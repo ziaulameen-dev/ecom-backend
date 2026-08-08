@@ -21,6 +21,15 @@ export class Product {
   @Column()
   name!: string;
 
+  @Column({ type: 'text', nullable: true })
+  description!: string | null;
+
+  @Column({ name: 'image_url', type: 'varchar', nullable: true })
+  imageUrl!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  category!: string | null;
+
   @Column({ default: 0 })
   stock!: number;
 

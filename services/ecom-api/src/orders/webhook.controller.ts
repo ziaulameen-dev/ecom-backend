@@ -13,11 +13,12 @@ import { Request } from 'express';
 import type Stripe from 'stripe';
 import { StripeService } from '../stripe/stripe.service';
 import { OrdersService } from './orders.service';
+import { WebhookEventsService } from './webhook-events.service';
 
 /**
- * POST /api/payments/webhook — Stripe calls this to confirm payment. It's the
- * source of truth for marking an order paid. PUBLIC + raw body (the signature
- * is verified against the raw bytes via `req.rawBody`, enabled in main.ts).
+ * POST /api/payments/webhook — Stripe's confirmation channel and the source of
+ * truth for payment state. PUBLIC + raw body (signature verified against the
+ * raw bytes). Events are de-duplicated by id and handlers are idempotent.
  */
 @Controller('payments/webhook')
 export class WebhookController {
@@ -26,6 +27,7 @@ export class WebhookController {
   constructor(
     private readonly stripe: StripeService,
     private readonly orders: OrdersService,
+    private readonly events: WebhookEventsService,
   ) {}
 
   @Post()
@@ -42,9 +44,19 @@ export class WebhookController {
       throw new BadRequestException('Invalid signature');
     }
 
+    // Skip if we've already processed this event id.
+    if (!(await this.events.firstDelivery(event.id))) {
+      return { received: true, duplicate: true };
+    }
+
     switch (event.type) {
       case 'payment_intent.succeeded':
         await this.orders.markPaidByPaymentIntent(
+          (event.data.object as Stripe.PaymentIntent).id,
+        );
+        break;
+      case 'payment_intent.processing':
+        await this.orders.markProcessingByPaymentIntent(
           (event.data.object as Stripe.PaymentIntent).id,
         );
         break;
@@ -55,8 +67,7 @@ export class WebhookController {
         break;
       case 'charge.refunded': {
         const charge = event.data.object as Stripe.Charge;
-        // Only reconcile FULL refunds done outside the app; partials (e.g.
-        // item returns) are handled by their own flow.
+        // Reconcile only FULL external refunds; partial (returns) handled apart.
         if (charge.payment_intent && charge.refunded) {
           await this.orders.markRefundedByPaymentIntent(
             String(charge.payment_intent),
@@ -64,9 +75,17 @@ export class WebhookController {
         }
         break;
       }
-      default:
-        // Ignore unhandled event types (still 200 so Stripe stops retrying).
+      case 'charge.dispute.created': {
+        const dispute = event.data.object as Stripe.Dispute;
+        if (dispute.payment_intent) {
+          await this.orders.markDisputedByPaymentIntent(
+            String(dispute.payment_intent),
+          );
+        }
         break;
+      }
+      default:
+        break; // ignore unhandled types (still 200 so Stripe stops retrying)
     }
     return { received: true };
   }

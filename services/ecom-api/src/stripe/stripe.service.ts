@@ -82,6 +82,21 @@ export class StripeService {
     );
   }
 
+  /**
+   * Record a Stripe Tax transaction from a calculation (called once payment
+   * succeeds) so the tax is booked for reporting. No-op if Tax isn't used.
+   */
+  async recordTax(calculationId: string, reference: string): Promise<void> {
+    try {
+      await this.stripe.tax.transactions.createFromCalculation({
+        calculation: calculationId,
+        reference,
+      });
+    } catch (err) {
+      this.logger.warn(`Tax transaction (${reference}): ${(err as Error).message}`);
+    }
+  }
+
   /** Cancel an unpaid PaymentIntent (used when cancelling a pending order). */
   async cancelPaymentIntent(id: string): Promise<void> {
     try {

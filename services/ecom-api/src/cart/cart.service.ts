@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, LessThan, Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
 import { CartItem } from './cart-item.entity';
 import { Cart } from './cart.entity';
@@ -190,6 +190,16 @@ export class CartService {
       itemCount: lines.reduce((n, l) => n + l.quantity, 0),
       subtotalMinor: subtotal,
     };
+  }
+
+  /** Delete abandoned GUEST carts not touched since the cutoff. Returns count. */
+  async purgeAbandonedGuestCarts(olderThan: Date): Promise<number> {
+    const stale = await this.carts.find({
+      where: { userId: IsNull(), updatedAt: LessThan(olderThan) },
+    });
+    if (!stale.length) return 0;
+    await this.carts.remove(stale); // cascades to items
+    return stale.length;
   }
 
   private create(userId: string | null, country?: string): Promise<Cart> {

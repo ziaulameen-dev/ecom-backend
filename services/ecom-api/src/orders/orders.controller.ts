@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -16,9 +17,15 @@ import { RolesGuard } from '../auth/roles.guard';
 import { CreateReturnDto } from './dto/create-return.dto';
 import { RefundDto } from './dto/refund.dto';
 import { ReturnActionDto } from './dto/return-action.dto';
+import { SetTrackingDto } from './dto/set-tracking.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersService } from './orders.service';
 import { ReturnsService } from './returns.service';
+
+const toInt = (v: string | undefined, d: number) => {
+  const n = parseInt(v ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : d;
+};
 
 /** Order history + cancel/return (user) and management + refunds (admin). */
 @Controller()
@@ -32,8 +39,12 @@ export class OrdersController {
 
   @Get('orders')
   @UseGuards(JwtAuthGuard)
-  list(@CurrentUser() user: AuthUser) {
-    return this.orders.listForUser(user.sub);
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.orders.listForUser(user.sub, toInt(page, 1), toInt(limit, 20));
   }
 
   @Get('orders/:id')
@@ -72,8 +83,8 @@ export class OrdersController {
   @Get('admin/orders')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  listAll() {
-    return this.orders.listAll();
+  listAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.orders.listAll(toInt(page, 1), toInt(limit, 50));
   }
 
   @Patch('admin/orders/:id/status')
@@ -97,6 +108,13 @@ export class OrdersController {
   @Roles('admin')
   refund(@Param('id') id: string, @Body() dto: RefundDto) {
     return this.orders.refund(id, dto.amountMinor);
+  }
+
+  @Patch('admin/orders/:id/tracking')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  setTracking(@Param('id') id: string, @Body() dto: SetTrackingDto) {
+    return this.orders.setTracking(id, dto.carrier, dto.trackingNumber);
   }
 
   @Get('admin/returns')

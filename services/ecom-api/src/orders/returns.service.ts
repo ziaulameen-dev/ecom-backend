@@ -36,12 +36,25 @@ export class ReturnsService {
       throw new BadRequestException('Only shipped/delivered orders can be returned');
     }
 
-    // Validate each returned line against the order (product + quantity).
+    // How much of each product is already claimed by other open/settled returns.
+    const existing = await this.returns.find({ where: { orderId } });
+    const claimed = new Map<string, number>();
+    for (const r of existing) {
+      if (r.status === 'rejected') continue;
+      for (const l of r.items) {
+        claimed.set(l.productId, (claimed.get(l.productId) ?? 0) + l.quantity);
+      }
+    }
+
+    // Validate each line against the remaining returnable quantity.
     for (const line of items) {
       const oi = order.items.find((i) => i.productId === line.productId);
       if (!oi) throw new BadRequestException('Item not in this order');
-      if (line.quantity < 1 || line.quantity > oi.quantity) {
-        throw new BadRequestException(`Invalid quantity for ${oi.name}`);
+      const remaining = oi.quantity - (claimed.get(line.productId) ?? 0);
+      if (line.quantity < 1 || line.quantity > remaining) {
+        throw new BadRequestException(
+          `Can return at most ${remaining} of "${oi.name}"`,
+        );
       }
     }
 
@@ -83,8 +96,8 @@ export class ReturnsService {
 
     const allowed: Record<ReturnStatus, ReturnStatus[]> = {
       requested: ['approved', 'rejected'],
-      approved: ['received'],
-      received: ['refunded'],
+      approved: ['received', 'rejected'],
+      received: ['refunded', 'rejected'], // reject-after-receipt (e.g. damaged)
       rejected: [],
       refunded: [],
     };
@@ -110,7 +123,10 @@ export class ReturnsService {
     let refundMinor = 0;
     for (const line of rr.items) {
       const oi = order.items.find((i) => i.productId === line.productId);
-      if (oi) refundMinor += oi.unitAmountMinor * line.quantity;
+      if (oi) {
+        refundMinor += oi.unitAmountMinor * line.quantity;
+        oi.returnedQuantity += line.quantity; // track to prevent over-returns
+      }
     }
     if (refundMinor > 0 && order.stripePaymentIntentId) {
       await this.stripe.refund(order.stripePaymentIntentId, refundMinor);
@@ -118,6 +134,9 @@ export class ReturnsService {
     for (const line of rr.items) {
       await this.products.incrementStock(line.productId, line.quantity);
     }
+    order.refundedMinor = Math.min(order.totalMinor, order.refundedMinor + refundMinor);
+    await this.orders.saveEntity(order); // persists returnedQuantity + refundedMinor
+
     rr.refundMinor = refundMinor;
     rr.status = 'refunded';
     this.logger.log(`Return ${rr.id} refunded ${refundMinor} + restocked`);

@@ -23,10 +23,16 @@ export class MailService {
   private readonly transporter: nodemailer.Transporter;
 
   constructor(private readonly config: ConfigService) {
+    // Dev -> Mailpit (no auth/TLS). Prod -> real SMTP with auth/TLS.
+    const isProd = this.config.get<string>('nodeEnv') === 'production';
+    const user = this.config.get<string>('mail.user');
     this.transporter = nodemailer.createTransport({
       host: this.config.get<string>('mail.host'),
       port: this.config.get<number>('mail.port'),
-      secure: false, // Mailpit speaks plain SMTP on 1025
+      secure: isProd && this.config.get<boolean>('mail.secure'),
+      ...(isProd && user
+        ? { auth: { user, pass: this.config.get<string>('mail.pass') } }
+        : {}),
     });
   }
 

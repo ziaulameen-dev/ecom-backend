@@ -1,5 +1,6 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CheckoutDto } from './dto/checkout.dto';
@@ -18,8 +19,9 @@ export class CheckoutController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 600_000 } }) // 10 / 10 min per IP
   async checkout(@CurrentUser() user: AuthUser, @Body() dto: CheckoutDto) {
-    const result = await this.orders.checkout(user.sub, dto.addressId);
+    const result = await this.orders.checkout(user.sub, user.email, dto.addressId);
     return {
       ...result,
       publishableKey: this.config.get<string>('stripe.publishableKey'),

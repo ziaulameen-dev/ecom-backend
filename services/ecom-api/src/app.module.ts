@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import Redis from 'ioredis';
 import { CsrfGuard } from './common/guards/csrf.guard';
 import { Address } from './addresses/address.entity';
 import { AddressesModule } from './addresses/addresses.module';
@@ -10,6 +14,7 @@ import { Cart } from './cart/cart.entity';
 import { CartModule } from './cart/cart.module';
 import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
+import { JobsModule } from './jobs/jobs.module';
 import { OrderItem } from './orders/order-item.entity';
 import { Order } from './orders/order.entity';
 import { OrdersModule } from './orders/orders.module';
@@ -60,6 +65,22 @@ import { ShippingModule } from './shipping/shipping.module';
         retryDelay: 3000,
       }),
     }),
+    // Redis-backed rate limiting (shared across replicas). Default 120/min/IP;
+    // checkout is tightened per-route via @Throttle.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
+        storage: new ThrottlerStorageRedisService(
+          new Redis({
+            host: config.get<string>('redis.host'),
+            port: config.get<number>('redis.port'),
+            maxRetriesPerRequest: 2,
+          }),
+        ),
+      }),
+    }),
+    ScheduleModule.forRoot(),
     HealthModule,
     ProductsModule,
     ProfileModule,
@@ -67,7 +88,11 @@ import { ShippingModule } from './shipping/shipping.module';
     CartModule,
     AddressesModule,
     OrdersModule,
+    JobsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: CsrfGuard },
+  ],
 })
 export class AppModule {}

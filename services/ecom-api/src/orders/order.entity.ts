@@ -11,10 +11,12 @@ import { OrderItem } from './order-item.entity';
 
 export type OrderStatus =
   | 'pending' // created, awaiting payment
+  | 'processing' // async payment method settling
   | 'paid' // payment confirmed (webhook)
   | 'failed' // payment failed
   | 'cancelled'
   | 'refunded'
+  | 'disputed' // chargeback opened
   | 'fulfilled'
   | 'shipped'
   | 'delivered';
@@ -45,6 +47,11 @@ export class Order {
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
 
+  // Snapshot of the buyer's email (from their token at checkout) so the service
+  // can email order updates without reaching into the auth DB.
+  @Column({ name: 'customer_email', type: 'varchar', nullable: true })
+  customerEmail!: string | null;
+
   @Column({ type: 'varchar', default: 'pending' })
   status!: OrderStatus;
 
@@ -63,12 +70,27 @@ export class Order {
   @Column({ name: 'total_minor', type: 'int' })
   totalMinor!: number;
 
+  // Total refunded so far (minor units) — supports partial refunds/returns.
+  @Column({ name: 'refunded_minor', type: 'int', default: 0 })
+  refundedMinor!: number;
+
   @Column({ name: 'shipping_address', type: 'jsonb' })
   shippingAddress!: ShippingAddressSnapshot;
 
   @Index()
   @Column({ name: 'stripe_payment_intent_id', type: 'varchar', nullable: true })
   stripePaymentIntentId!: string | null;
+
+  // Stripe Tax calculation id — turned into a recorded tax transaction on paid.
+  @Column({ name: 'tax_calculation_id', type: 'varchar', nullable: true })
+  taxCalculationId!: string | null;
+
+  // Shipment tracking (set by admin when shipping).
+  @Column({ type: 'varchar', nullable: true })
+  carrier!: string | null;
+
+  @Column({ name: 'tracking_number', type: 'varchar', nullable: true })
+  trackingNumber!: string | null;
 
   @OneToMany(() => OrderItem, (i) => i.order, { cascade: true })
   items!: OrderItem[];

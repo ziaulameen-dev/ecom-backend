@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AddressesModule } from '../addresses/addresses.module';
 import { AuthModule } from '../auth/auth.module';
 import { CartModule } from '../cart/cart.module';
+import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
 import { ShippingModule } from '../shipping/shipping.module';
 import { StripeModule } from '../stripe/stripe.module';
@@ -14,6 +15,7 @@ import { OrdersService } from './orders.service';
 import { ReturnRequest } from './return-request.entity';
 import { ReturnsService } from './returns.service';
 import { WebhookController } from './webhook.controller';
+import { WebhookEventsService } from './webhook-events.service';
 
 /** Checkout, orders, Stripe payment webhook, and admin order management. */
 @Module({
@@ -25,8 +27,10 @@ import { WebhookController } from './webhook.controller';
     ShippingModule,
     ProductsModule,
     StripeModule,
+    MailModule,
   ],
   controllers: [CheckoutController, OrdersController, WebhookController],
-  providers: [OrdersService, ReturnsService],
+  providers: [OrdersService, ReturnsService, WebhookEventsService],
+  exports: [OrdersService],
 })
 export class OrdersModule {}

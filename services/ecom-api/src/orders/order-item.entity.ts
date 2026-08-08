@@ -34,4 +34,8 @@ export class OrderItem {
 
   @Column({ type: 'int' })
   quantity!: number;
+
+  // How many units of this line have been returned (prevents over-returning).
+  @Column({ name: 'returned_quantity', type: 'int', default: 0 })
+  returnedQuantity!: number;
 }

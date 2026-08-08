@@ -34,8 +34,19 @@ export class ProductsController {
   // ---- Public ---------------------------------------------------------------
 
   @Get()
-  findAll(@Query('country') country?: string) {
-    return this.products.findAllForCountry(country || DEFAULT_COUNTRY);
+  findAll(
+    @Query('country') country?: string,
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.products.findAllForCountry(country || DEFAULT_COUNTRY, {
+      search,
+      category,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   @Get(':id')

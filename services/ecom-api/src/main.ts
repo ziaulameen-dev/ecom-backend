@@ -21,6 +21,10 @@ async function bootstrap() {
   // Prefix every route with /api, e.g. GET /api/products.
   app.setGlobalPrefix('api');
 
+  // Behind nginx, trust the first proxy hop so rate limiting keys on the real
+  // client IP (X-Forwarded-For), not nginx's address.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // Parse the Cookie header so the JwtAuthGuard can read the HttpOnly auth
   // cookie (req.cookies['access_token']) set by the auth service.
   app.use(cookieParser());

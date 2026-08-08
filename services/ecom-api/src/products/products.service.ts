@@ -16,8 +16,19 @@ import { Product } from './product.entity';
 export interface ProductView {
   id: string;
   name: string;
+  description: string | null;
+  imageUrl: string | null;
+  category: string | null;
   stock: number;
   price: { currency: string; amountMinor: number } | null;
+}
+
+/** Catalog filters. */
+export interface CatalogQuery {
+  search?: string;
+  category?: string;
+  page?: number;
+  limit?: number;
 }
 
 /**
@@ -39,10 +50,22 @@ export class ProductsService implements OnModuleInit {
   async onModuleInit() {
     if ((await this.products.count()) > 0) return;
     const tee = await this.products.save(
-      this.products.create({ name: 'T-Shirt', stock: 100 }),
+      this.products.create({
+        name: 'T-Shirt',
+        description: 'Soft 100% cotton tee.',
+        category: 'apparel',
+        imageUrl: 'https://placehold.co/600x400?text=T-Shirt',
+        stock: 100,
+      }),
     );
     const shoes = await this.products.save(
-      this.products.create({ name: 'Sneakers', stock: 25 }),
+      this.products.create({
+        name: 'Sneakers',
+        description: 'Everyday cushioned sneakers.',
+        category: 'footwear',
+        imageUrl: 'https://placehold.co/600x400?text=Sneakers',
+        stock: 25,
+      }),
     );
     await this.prices.save([
       this.prices.create({ productId: tee.id, country: 'US', currency: 'usd', amountMinor: 1999 }),
@@ -56,10 +79,24 @@ export class ProductsService implements OnModuleInit {
 
   // ---- Public catalog -------------------------------------------------------
 
-  /** List products with each one's price for the given country (null if none). */
-  async findAllForCountry(country: string): Promise<ProductView[]> {
+  /** List products (with search/category filters) priced for a country. */
+  async findAllForCountry(
+    country: string,
+    q: CatalogQuery = {},
+  ): Promise<ProductView[]> {
     const cc = country.toUpperCase();
-    const products = await this.products.find({ order: { createdAt: 'DESC' } });
+    const limit = Math.min(Math.max(q.limit ?? 50, 1), 100);
+    const page = Math.max(q.page ?? 1, 1);
+
+    const qb = this.products
+      .createQueryBuilder('p')
+      .orderBy('p.created_at', 'DESC')
+      .take(limit)
+      .skip((page - 1) * limit);
+    if (q.search) qb.andWhere('p.name ILIKE :s', { s: `%${q.search}%` });
+    if (q.category) qb.andWhere('p.category = :c', { c: q.category });
+
+    const products = await qb.getMany();
     const prices = await this.prices.find({ where: { country: cc } });
     const byProduct = new Map(prices.map((p) => [p.productId, p]));
     return products.map((p) => this.toView(p, byProduct.get(p.id)));
@@ -166,6 +203,9 @@ export class ProductsService implements OnModuleInit {
     return {
       id: product.id,
       name: product.name,
+      description: product.description,
+      imageUrl: product.imageUrl,
+      category: product.category,
       stock: product.stock,
       price: price
         ? { currency: price.currency, amountMinor: price.amountMinor }
