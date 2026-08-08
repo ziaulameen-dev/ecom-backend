@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useLogout, useMe } from '@/features/auth/api';
+import { useAuthModal } from '@/features/auth/auth-modal.store';
 import {
   useAddresses,
   useCancelOrder,
@@ -43,12 +44,20 @@ function AccountInner() {
   const sp = useSearchParams();
   const tab = (sp.get('tab') ?? 'profile') as (typeof TABS)[number]['key'];
   const { data: me, isLoading } = useMe();
+  const openLogin = useAuthModal((s) => s.openLogin);
 
   useEffect(() => {
-    if (!isLoading && !me) router.replace('/login?next=/account');
-  }, [me, isLoading, router]);
+    if (!isLoading && !me) openLogin('/account');
+  }, [me, isLoading, openLogin]);
 
-  if (!me) return <div className="mx-auto max-w-5xl px-4 py-24 text-center text-muted-foreground">Loading…</div>;
+  if (!me) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-24 text-center">
+        <p className="text-muted-foreground">Please sign in to view your account.</p>
+        <Button className="mt-4" onClick={() => openLogin('/account')}>Sign in</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">

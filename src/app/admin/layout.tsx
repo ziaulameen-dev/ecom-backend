@@ -6,10 +6,11 @@ import {
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useMe } from '@/features/auth/api';
+import { useAuthModal } from '@/features/auth/auth-modal.store';
 import { sseUrl } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
@@ -27,15 +28,15 @@ const NAV = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { data: me, isLoading } = useMe();
-  const router = useRouter();
   const pathname = usePathname();
   const qc = useQueryClient();
+  const openLogin = useAuthModal((s) => s.openLogin);
   const isAdmin = !!me?.roles?.includes('admin');
   const [live, setLive] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !isAdmin) router.replace('/login?next=/admin');
-  }, [isLoading, isAdmin, router]);
+    if (!isLoading && !me) openLogin('/admin');
+  }, [isLoading, me, openLogin]);
 
   // Live updates: refresh orders/returns as they change server-side (SSE).
   useEffect(() => {

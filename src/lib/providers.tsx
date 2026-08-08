@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Toaster } from '@/components/ui/sonner';
+import { LoginModal } from '@/features/auth/components/login-modal';
 
 /** App-wide client providers: TanStack Query + toasts. */
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       {children}
+      <LoginModal />
       <Toaster richColors position="top-center" />
     </QueryClientProvider>
   );

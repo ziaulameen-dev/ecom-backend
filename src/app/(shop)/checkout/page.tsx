@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { useMe } from '@/features/auth/api';
+import { useAuthModal } from '@/features/auth/auth-modal.store';
 import { useCart } from '@/features/cart/api';
 import {
   useAddresses,
@@ -26,6 +27,7 @@ type Phase = 'form' | 'paying' | 'confirming' | 'done';
 export default function CheckoutPage() {
   const router = useRouter();
   const { data: me, isLoading: meLoading } = useMe();
+  const openLogin = useAuthModal((s) => s.openLogin);
   const { data: cart } = useCart();
   const { data: addresses } = useAddresses();
   const createAddress = useCreateAddress();
@@ -40,8 +42,8 @@ export default function CheckoutPage() {
   const [status, setStatus] = useState('');
 
   useEffect(() => {
-    if (!meLoading && !me) router.replace('/login?next=/checkout');
-  }, [me, meLoading, router]);
+    if (!meLoading && !me) openLogin('/checkout');
+  }, [me, meLoading, openLogin]);
 
   useEffect(() => {
     if (addresses?.length && !selected) {

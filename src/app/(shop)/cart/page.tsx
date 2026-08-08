@@ -8,12 +8,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMe } from '@/features/auth/api';
+import { useAuthModal } from '@/features/auth/auth-modal.store';
 import { useCart, useRemoveCartItem, useUpdateCartItem } from '@/features/cart/api';
 import { money } from '@/lib/utils';
 
 export default function CartPage() {
   const { data: cart, isLoading } = useCart();
   const { data: me } = useMe();
+  const openLogin = useAuthModal((s) => s.openLogin);
   const update = useUpdateCartItem();
   const remove = useRemoveCartItem();
 
@@ -76,7 +78,7 @@ export default function CartPage() {
             {me ? (
               <Link href="/checkout" className="block"><Button className="w-full" size="lg">Checkout</Button></Link>
             ) : (
-              <Link href="/login?next=/checkout" className="block"><Button className="w-full" size="lg">Login to checkout</Button></Link>
+              <Button className="w-full" size="lg" onClick={() => openLogin('/checkout')}>Login to checkout</Button>
             )}
             <Link href="/shop" className="block text-center text-sm text-muted-foreground hover:text-foreground">
               Continue shopping

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { RatingStars } from '@/components/rating-stars';
 import { Button } from '@/components/ui/button';
 import { useAddToCart } from '@/features/cart/api';
 import type { ListingItem } from '@/lib/types';
@@ -61,6 +62,12 @@ export function ProductCard({ item }: { item: ListingItem }) {
         <Link href={href} className="line-clamp-2 text-sm font-medium hover:underline">
           {item.name}
         </Link>
+        {item.ratingCount > 0 && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <RatingStars value={item.ratingAvg} />
+            <span className="text-xs text-muted-foreground">({item.ratingCount})</span>
+          </div>
+        )}
         <div className="mt-2 flex items-center justify-between">
           <span className="font-semibold">{money(item.priceMinor, item.currency)}</span>
         </div>

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCart } from '@/features/cart/api';
 import { useMe } from '@/features/auth/api';
+import { useAuthModal } from '@/features/auth/auth-modal.store';
 import { STORE_NAME } from '@/lib/config';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +23,7 @@ const NAV = [
 export function SiteHeader() {
   const { data: cart } = useCart();
   const { data: me } = useMe();
+  const openLogin = useAuthModal((s) => s.openLogin);
   const router = useRouter();
   const [q, setQ] = useState('');
   const count = cart?.itemCount ?? 0;
@@ -88,9 +90,9 @@ export function SiteHeader() {
             </Link>
           )}
           {!me && (
-            <Link href="/login" className="ml-1 hidden sm:inline-flex">
-              <Button size="sm">Login</Button>
-            </Link>
+            <Button size="sm" className="ml-1 hidden sm:inline-flex" onClick={() => openLogin()}>
+              Login
+            </Button>
           )}
         </div>
       </div>

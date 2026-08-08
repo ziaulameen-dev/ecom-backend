@@ -44,6 +44,8 @@ export interface ListingItem {
   priceMinor: number;
   currency: string;
   inStock: boolean;
+  ratingAvg: number;
+  ratingCount: number;
 }
 
 export interface VariantOption {
