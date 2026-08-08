@@ -32,6 +32,7 @@ import { Product } from './products/product.entity';
 import { ProductVariant } from './products/product-variant.entity';
 import { ProductsModule } from './products/products.module';
 import { ProfileModule } from './profile/profile.module';
+import { SeedModule } from './seed/seed.module';
 import { ShippingRate } from './shipping/shipping-rate.entity';
 import { ShippingModule } from './shipping/shipping.module';
 
@@ -107,6 +108,7 @@ import { ShippingModule } from './shipping/shipping.module';
     AddressesModule,
     OrdersModule,
     JobsModule,
+    SeedModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

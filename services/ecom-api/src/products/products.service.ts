@@ -3,7 +3,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -92,7 +91,7 @@ export interface PurchasableLine {
 
 /** Product business logic: catalog reads + admin product/variant management. */
 @Injectable()
-export class ProductsService implements OnModuleInit {
+export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
 
   constructor(
@@ -104,30 +103,9 @@ export class ProductsService implements OnModuleInit {
     private readonly attributes: AttributesService,
   ) {}
 
-  /** Seed a couple of demo products on first boot. */
-  async onModuleInit() {
-    if ((await this.products.count()) > 0) return;
-    await this.products.save([
-      this.products.create({
-        name: 'Classic Automatic Watch',
-        slug: 'classic-automatic-watch',
-        description: 'Stainless steel automatic watch.',
-        category: 'watch',
-        imageUrl: 'https://placehold.co/600x600?text=Watch',
-        stock: 50,
-        priceMinor: 1299900,
-      }),
-      this.products.create({
-        name: 'Signature Eau de Parfum',
-        slug: 'signature-eau-de-parfum',
-        description: 'Long-lasting unisex fragrance, 100ml.',
-        category: 'perfume',
-        imageUrl: 'https://placehold.co/600x600?text=Perfume',
-        stock: 80,
-        priceMinor: 499900,
-      }),
-    ]);
-    this.logger.log('Seeded demo products');
+  /** How many products exist (used by the seeder to run only once). */
+  count(): Promise<number> {
+    return this.products.count();
   }
 
   // ---- Public catalog -------------------------------------------------------
