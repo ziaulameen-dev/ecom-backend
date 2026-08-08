@@ -3,12 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { authKeys } from '@/features/auth/api';
-import type { Address, Order, User } from '@/lib/types';
+import type { AdminReturn, Address, Order, OrderItem, User } from '@/lib/types';
 
 export const accountKeys = {
   addresses: ['addresses'] as const,
   orders: ['orders'] as const,
   order: (id: string) => ['order', id] as const,
+  returns: ['my-returns'] as const,
 };
 
 // ---- Addresses ------------------------------------------------------------
@@ -65,6 +66,35 @@ export function useCancelOrder() {
     mutationFn: (input: { id: string; reason?: string }) =>
       api.post(`/api/orders/${input.id}/cancel`, input.reason ? { reason: input.reason } : {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: accountKeys.orders }),
+  });
+}
+
+// ---- Returns (RMA) --------------------------------------------------------
+
+export function useMyReturns() {
+  return useQuery({ queryKey: accountKeys.returns, queryFn: () => api.get<AdminReturn[]>('/api/returns') });
+}
+
+/** Create a return for the whole order, then upload evidence images (if any). */
+export function useRequestReturn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { orderId: string; reason?: string; items: OrderItem[]; files: File[] }) => {
+      const rr = await api.post<{ id: string }>(`/api/orders/${input.orderId}/returns`, {
+        reason: input.reason || undefined,
+        items: input.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      });
+      if (input.files.length) {
+        const fd = new FormData();
+        input.files.slice(0, 5).forEach((f) => fd.append('images', f));
+        await api.postForm(`/api/returns/${rr.id}/images`, fd);
+      }
+      return rr;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: accountKeys.returns });
+      qc.invalidateQueries({ queryKey: accountKeys.orders });
+    },
   });
 }
 

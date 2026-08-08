@@ -4,6 +4,7 @@ import { LogOut } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { AuthImage } from '@/components/auth-image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,11 +18,13 @@ import {
   useCreateAddress,
   useDeleteAddress,
   useMyOrders,
+  useMyReturns,
   useUpdateProfile,
   type AddressInput,
 } from '@/features/account/api';
 import { AddressForm } from '@/features/account/components/address-form';
-import type { OrderStatus } from '@/lib/types';
+import { ReturnForm } from '@/features/account/components/return-form';
+import type { AdminReturn, OrderStatus } from '@/lib/types';
 import { cn, formatDate, money } from '@/lib/utils';
 
 const TABS = [
@@ -123,55 +126,94 @@ function ProfileTab({ email, name }: { email: string; name: string | null }) {
   );
 }
 
+const RETURNABLE = ['shipped', 'delivered', 'fulfilled'];
+const returnBadge: Record<string, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+  requested: 'secondary', approved: 'default', received: 'default', refunded: 'success', rejected: 'destructive',
+};
+
 function OrdersTab() {
   const { data: orders, isLoading } = useMyOrders();
+  const { data: returns } = useMyReturns();
   const cancel = useCancelOrder();
+  const [returningId, setReturningId] = useState<string | null>(null);
 
   if (isLoading) return <p className="text-muted-foreground">Loading orders…</p>;
   if (!orders?.length) return <p className="text-muted-foreground">No orders yet.</p>;
 
+  const returnFor = (orderId: string): AdminReturn | undefined =>
+    returns?.find((r) => r.orderId === orderId);
+
   return (
     <div className="space-y-4">
-      {orders.map((o) => (
-        <Card key={o.id}>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-sm">{o.reference ?? `#${o.id.slice(0, 8)}`}</span>
-              <Badge variant={statusVariant[o.status] ?? 'secondary'}>{o.status}</Badge>
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">{formatDate(o.createdAt)}</div>
-            <div className="mt-3 space-y-1 text-sm">
-              {o.items.map((it, i) => (
-                <div key={i} className="flex justify-between text-muted-foreground">
-                  <span>{it.name}{it.variantLabel ? ` · ${it.variantLabel}` : ''} × {it.quantity}</span>
-                  <span>{money(it.unitAmountMinor * it.quantity, o.currency)}</span>
+      {orders.map((o) => {
+        const ret = returnFor(o.id);
+        return (
+          <Card key={o.id}>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm">{o.reference ?? `#${o.id.slice(0, 8)}`}</span>
+                <Badge variant={statusVariant[o.status] ?? 'secondary'}>{o.status}</Badge>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">{formatDate(o.createdAt)}</div>
+              <div className="mt-3 space-y-1 text-sm">
+                {o.items.map((it, i) => (
+                  <div key={i} className="flex justify-between text-muted-foreground">
+                    <span>{it.name}{it.variantLabel ? ` · ${it.variantLabel}` : ''} × {it.quantity}</span>
+                    <span>{money(it.unitAmountMinor * it.quantity, o.currency)}</span>
+                  </div>
+                ))}
+              </div>
+              <Separator className="my-3" />
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">{money(o.totalMinor, o.currency)}</span>
+                <div className="flex items-center gap-2">
+                  {['pending', 'paid'].includes(o.status) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={cancel.isPending}
+                      onClick={() => {
+                        const reason = window.prompt('Reason for cancelling? (optional)');
+                        if (reason === null) return;
+                        cancel.mutate(
+                          { id: o.id, reason: reason || undefined },
+                          { onSuccess: () => toast.success('Order cancelled'), onError: (e) => toast.error((e as Error).message) },
+                        );
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                  {RETURNABLE.includes(o.status) && !ret && returningId !== o.id && (
+                    <Button variant="outline" size="sm" onClick={() => setReturningId(o.id)}>Request return</Button>
+                  )}
                 </div>
-              ))}
-            </div>
-            <Separator className="my-3" />
-            <div className="flex items-center justify-between">
-              <span className="font-semibold">{money(o.totalMinor, o.currency)}</span>
-              {['pending', 'paid'].includes(o.status) && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={cancel.isPending}
-                  onClick={() => {
-                    const reason = window.prompt('Reason for cancelling? (optional)');
-                    if (reason === null) return;
-                    cancel.mutate(
-                      { id: o.id, reason: reason || undefined },
-                      { onSuccess: () => toast.success('Order cancelled'), onError: (e) => toast.error((e as Error).message) },
-                    );
-                  }}
-                >
-                  Cancel
-                </Button>
+              </div>
+
+              {ret && (
+                <div className="mt-3 rounded-lg border p-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Return:</span>
+                    <Badge variant={returnBadge[ret.status] ?? 'secondary'}>{ret.status}</Badge>
+                    {ret.refundMinor > 0 && <span className="text-xs text-muted-foreground">refunded {money(ret.refundMinor, o.currency)}</span>}
+                  </div>
+                  {ret.images?.length > 0 && (
+                    <div className="mt-2 flex gap-2">
+                      {ret.images.map((key) => (
+                        <AuthImage key={key} path={`/api/returns/${ret.id}/images/${key.split('/').pop()}`} className="size-14 rounded-md border object-cover" />
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+
+              {returningId === o.id && (
+                <ReturnForm order={o} onDone={() => setReturningId(null)} />
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
