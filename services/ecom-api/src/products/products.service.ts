@@ -208,6 +208,14 @@ export class ProductsService {
     };
   }
 
+  /** Admin: all products (incl. inactive) with their variants, for management. */
+  listAllAdmin(): Promise<Product[]> {
+    return this.products.find({
+      relations: { variants: true },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   /** The raw product row (used by cart/checkout for name, price + stock). */
   findEntity(id: string): Promise<Product | null> {
     return this.products.findOne({ where: { id } });

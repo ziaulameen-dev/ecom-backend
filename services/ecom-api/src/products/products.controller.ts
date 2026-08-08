@@ -53,6 +53,14 @@ export class ProductsController {
 
   // ---- Admin: products ------------------------------------------------------
 
+  /** All products incl. inactive, with variants (admin management). */
+  @Get('admin/all')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  listAllAdmin() {
+    return this.products.listAllAdmin();
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
