@@ -1,7 +1,10 @@
 import {
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
+  Matches,
   MaxLength,
   Min,
   MinLength,
@@ -13,10 +16,23 @@ export class CreateProductDto {
   @MinLength(2)
   name!: string;
 
-  // INR price in paise (e.g. 49900 = ₹499.00).
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'slug must be kebab-case' })
+  slug?: string;
+
+  // Base INR price in paise (used when the product has no variants).
   @IsInt()
   @Min(0)
   priceMinor!: number;
+
+  @IsInt()
+  @Min(0)
+  stock!: number;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
 
   @IsOptional()
   @IsString()
@@ -33,7 +49,7 @@ export class CreateProductDto {
   @MaxLength(60)
   category?: string;
 
-  @IsInt()
-  @Min(0)
-  stock!: number;
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
 }

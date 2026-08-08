@@ -16,12 +16,13 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { CreateVariantDto, UpdateVariantDto } from './dto/variant.dto';
 import { ProductsService } from './products.service';
 
 /**
- * Product routes (India-only, INR).
- *   Public : browse the catalog.
- *   Admin  : product CRUD, including the INR price (JWT + role check).
+ * Products & variants (India-only, INR).
+ *   Public : browse the catalog + product detail (with variants).
+ *   Admin  : product + variant CRUD (JWT + role check).
  */
 @Controller('products')
 export class ProductsController {
@@ -32,24 +33,25 @@ export class ProductsController {
   @Get()
   findAll(
     @Query('search') search?: string,
-    @Query('category') category?: string,
+    @Query('categoryId') categoryId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.products.findAll({
       search,
-      category,
+      categoryId,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.products.findOne(id);
+  /** By id OR slug. */
+  @Get(':idOrSlug')
+  findOne(@Param('idOrSlug') idOrSlug: string) {
+    return this.products.getDetail(idOrSlug);
   }
 
-  // ---- Admin ----------------------------------------------------------------
+  // ---- Admin: products ------------------------------------------------------
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -71,5 +73,29 @@ export class ProductsController {
   @Roles('admin')
   remove(@Param('id') id: string) {
     return this.products.remove(id);
+  }
+
+  // ---- Admin: variants ------------------------------------------------------
+
+  @Post(':id/variants')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  addVariant(@Param('id') id: string, @Body() dto: CreateVariantDto) {
+    return this.products.addVariant(id, dto);
+  }
+
+  @Patch('variants/:variantId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  updateVariant(@Param('variantId') variantId: string, @Body() dto: UpdateVariantDto) {
+    return this.products.updateVariant(variantId, dto);
+  }
+
+  @Delete('variants/:variantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  removeVariant(@Param('variantId') variantId: string) {
+    return this.products.removeVariant(variantId);
   }
 }

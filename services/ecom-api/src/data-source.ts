@@ -6,6 +6,12 @@ import { OrderItem } from './orders/order-item.entity';
 import { Order } from './orders/order.entity';
 import { ReturnRequest } from './orders/return-request.entity';
 import { Product } from './products/product.entity';
+import { ProductVariant } from './products/product-variant.entity';
+import { Category } from './categories/category.entity';
+import { AttributeType } from './attributes/attribute-type.entity';
+import { AttributeValue } from './attributes/attribute-value.entity';
+import { Review } from './reviews/review.entity';
+import { Coupon } from './coupons/coupon.entity';
 import { ShippingRate } from './shipping/shipping-rate.entity';
 
 /**
@@ -22,6 +28,12 @@ export default new DataSource({
   database: process.env.ECOM_DB_NAME ?? 'ecomdb',
   entities: [
     Product,
+    ProductVariant,
+    Category,
+    AttributeType,
+    AttributeValue,
+    Review,
+    Coupon,
     ShippingRate,
     Cart,
     CartItem,

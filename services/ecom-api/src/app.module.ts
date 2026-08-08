@@ -9,6 +9,15 @@ import Redis from 'ioredis';
 import { CsrfGuard } from './common/guards/csrf.guard';
 import { Address } from './addresses/address.entity';
 import { AddressesModule } from './addresses/addresses.module';
+import { AttributeType } from './attributes/attribute-type.entity';
+import { AttributeValue } from './attributes/attribute-value.entity';
+import { AttributesModule } from './attributes/attributes.module';
+import { Category } from './categories/category.entity';
+import { CategoriesModule } from './categories/categories.module';
+import { Coupon } from './coupons/coupon.entity';
+import { CouponsModule } from './coupons/coupons.module';
+import { Review } from './reviews/review.entity';
+import { ReviewsModule } from './reviews/reviews.module';
 import { CartItem } from './cart/cart-item.entity';
 import { Cart } from './cart/cart.entity';
 import { CartModule } from './cart/cart.module';
@@ -20,6 +29,7 @@ import { Order } from './orders/order.entity';
 import { OrdersModule } from './orders/orders.module';
 import { ReturnRequest } from './orders/return-request.entity';
 import { Product } from './products/product.entity';
+import { ProductVariant } from './products/product-variant.entity';
 import { ProductsModule } from './products/products.module';
 import { ProfileModule } from './profile/profile.module';
 import { ShippingRate } from './shipping/shipping-rate.entity';
@@ -50,6 +60,12 @@ import { ShippingModule } from './shipping/shipping.module';
         database: config.get<string>('db.database'),
         entities: [
           Product,
+          ProductVariant,
+          Category,
+          AttributeType,
+          AttributeValue,
+          Review,
+          Coupon,
           ShippingRate,
           Cart,
           CartItem,
@@ -80,6 +96,10 @@ import { ShippingModule } from './shipping/shipping.module';
     }),
     ScheduleModule.forRoot(),
     HealthModule,
+    CategoriesModule,
+    AttributesModule,
+    ReviewsModule,
+    CouponsModule,
     ProductsModule,
     ProfileModule,
     ShippingModule,
