@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { OrdersService } from './orders.service';
 import { ProductsService } from '../products/products.service';
-import { StripeService } from '../stripe/stripe.service';
+import { CashfreeService } from '../cashfree/cashfree.service';
 import { ReturnRequest } from './return-request.entity';
 import { ReturnsService } from './returns.service';
 
@@ -18,7 +18,7 @@ function makeRepo() {
 const ORDER = {
   id: 'o1',
   status: 'delivered',
-  stripePaymentIntentId: 'pi_1',
+  paymentRef: 'cf_1',
   totalMinor: 200,
   refundedMinor: 0,
   items: [
@@ -29,7 +29,7 @@ const ORDER = {
 describe('ReturnsService', () => {
   let repo: jest.Mocked<Repository<ReturnRequest>>;
   let orders: { loadOwned: jest.Mock; saveEntity: jest.Mock };
-  let stripe: { refund: jest.Mock };
+  let cashfree: { refund: jest.Mock };
   let products: { incrementStock: jest.Mock };
   let service: ReturnsService;
 
@@ -39,12 +39,12 @@ describe('ReturnsService', () => {
       loadOwned: jest.fn().mockResolvedValue({ ...ORDER, items: [...ORDER.items.map((i) => ({ ...i }))] }),
       saveEntity: jest.fn().mockResolvedValue(undefined),
     };
-    stripe = { refund: jest.fn().mockResolvedValue({ fullyRefunded: false }) };
+    cashfree = { refund: jest.fn().mockResolvedValue(undefined) };
     products = { incrementStock: jest.fn().mockResolvedValue(undefined) };
     service = new ReturnsService(
       repo,
       orders as unknown as OrdersService,
-      stripe as unknown as StripeService,
+      cashfree as unknown as CashfreeService,
       products as unknown as ProductsService,
     );
   });
@@ -97,7 +97,9 @@ describe('ReturnsService', () => {
         refundMinor: 0,
       } as ReturnRequest);
       const rr = await service.transition('r1', 'refund');
-      expect(stripe.refund).toHaveBeenCalledWith('pi_1', 100); // 1 x 100
+      expect(cashfree.refund).toHaveBeenCalledWith(
+        expect.objectContaining({ cfOrderId: 'cf_1', amountMinor: 100 }),
+      ); // 1 x 100
       expect(products.incrementStock).toHaveBeenCalledWith('p1', 1);
       expect(rr.status).toBe('refunded');
       expect(rr.refundMinor).toBe(100);

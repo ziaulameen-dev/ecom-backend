@@ -119,10 +119,10 @@ function ProductsSection() {
 
 function PricesSection() {
   const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
-  const [f, setF] = useState({ productId: '', country: 'US', currency: 'usd', amountMinor: 0 });
+  const [f, setF] = useState({ productId: '', country: 'IN', currency: 'inr', amountMinor: 0 });
   const [msg, setMsg] = useState('');
 
-  useEffect(() => { get('/api/products?country=US').then((p) => { setProducts(p); if (p[0]) setF((s) => ({ ...s, productId: p[0].id })); }); }, []);
+  useEffect(() => { get('/api/products?country=IN').then((p) => { setProducts(p); if (p[0]) setF((s) => ({ ...s, productId: p[0].id })); }); }, []);
 
   async function save() {
     setMsg('');
@@ -158,7 +158,7 @@ function PricesSection() {
 
 function ShippingSection() {
   const [rates, setRates] = useState<{ country: string; currency: string; amountMinor: number }[]>([]);
-  const [f, setF] = useState({ country: 'US', currency: 'usd', amountMinor: 0 });
+  const [f, setF] = useState({ country: 'IN', currency: 'inr', amountMinor: 0 });
   const [msg, setMsg] = useState('');
 
   const load = () => get('/api/shipping-rates').then(setRates).catch(() => setRates([]));

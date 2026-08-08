@@ -10,22 +10,21 @@ import {
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
-import type Stripe from 'stripe';
-import { StripeService } from '../stripe/stripe.service';
+import { CashfreeService } from '../cashfree/cashfree.service';
 import { OrdersService } from './orders.service';
 import { WebhookEventsService } from './webhook-events.service';
 
 /**
- * POST /api/payments/webhook — Stripe's confirmation channel and the source of
- * truth for payment state. PUBLIC + raw body (signature verified against the
- * raw bytes). Events are de-duplicated by id and handlers are idempotent.
+ * POST /api/payments/webhook — Cashfree's confirmation channel and the source of
+ * truth for payment state. PUBLIC + raw body (signature verified against the raw
+ * bytes). Events are de-duplicated and handlers are idempotent.
  */
 @Controller('payments/webhook')
 export class WebhookController {
   private readonly logger = new Logger(WebhookController.name);
 
   constructor(
-    private readonly stripe: StripeService,
+    private readonly cashfree: CashfreeService,
     private readonly orders: OrdersService,
     private readonly events: WebhookEventsService,
   ) {}
@@ -34,59 +33,64 @@ export class WebhookController {
   @HttpCode(HttpStatus.OK)
   async handle(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('stripe-signature') signature: string,
+    @Headers('x-webhook-signature') signature: string,
+    @Headers('x-webhook-timestamp') timestamp: string,
   ) {
-    let event: Stripe.Event;
-    try {
-      event = this.stripe.constructEvent(req.rawBody as Buffer, signature);
-    } catch (err) {
-      this.logger.warn(`Bad webhook signature: ${(err as Error).message}`);
+    const raw = (req.rawBody as Buffer)?.toString('utf8') ?? '';
+    if (!this.cashfree.verifyWebhook(raw, signature, timestamp)) {
+      this.logger.warn('Bad Cashfree webhook signature');
       throw new BadRequestException('Invalid signature');
     }
 
-    // Skip if we've already processed this event id.
-    if (!(await this.events.firstDelivery(event.id))) {
+    let event: CashfreeWebhook;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      throw new BadRequestException('Invalid payload');
+    }
+
+    const orderId = event?.data?.order?.order_id;
+    const type = event?.type;
+    if (!orderId || !type) return { received: true };
+
+    // Cashfree has no stable event id, so key dedup on the mutation identity:
+    // order + type + the payment/refund id (or timestamp as a last resort).
+    const dedupId =
+      event.data?.payment?.cf_payment_id ??
+      event.data?.refund?.cf_refund_id ??
+      timestamp;
+    if (!(await this.events.firstDelivery(`${type}:${orderId}:${dedupId}`))) {
       return { received: true, duplicate: true };
     }
 
-    switch (event.type) {
-      case 'payment_intent.succeeded':
-        await this.orders.markPaidByPaymentIntent(
-          (event.data.object as Stripe.PaymentIntent).id,
-        );
+    switch (type) {
+      case 'PAYMENT_SUCCESS_WEBHOOK':
+        await this.orders.markPaidByRef(orderId);
         break;
-      case 'payment_intent.processing':
-        await this.orders.markProcessingByPaymentIntent(
-          (event.data.object as Stripe.PaymentIntent).id,
-        );
+      case 'PAYMENT_FAILED_WEBHOOK':
+      case 'PAYMENT_USER_DROPPED_WEBHOOK':
+        await this.orders.markFailedByRef(orderId);
         break;
-      case 'payment_intent.payment_failed':
-        await this.orders.markFailedByPaymentIntent(
-          (event.data.object as Stripe.PaymentIntent).id,
-        );
-        break;
-      case 'charge.refunded': {
-        const charge = event.data.object as Stripe.Charge;
-        // Reconcile only FULL external refunds; partial (returns) handled apart.
-        if (charge.payment_intent && charge.refunded) {
-          await this.orders.markRefundedByPaymentIntent(
-            String(charge.payment_intent),
-          );
-        }
-        break;
-      }
-      case 'charge.dispute.created': {
-        const dispute = event.data.object as Stripe.Dispute;
-        if (dispute.payment_intent) {
-          await this.orders.markDisputedByPaymentIntent(
-            String(dispute.payment_intent),
-          );
+      case 'REFUND_STATUS_WEBHOOK': {
+        // Reconcile only when the refund actually settled.
+        if (event.data?.refund?.refund_status === 'SUCCESS') {
+          await this.orders.markRefundedByRef(orderId);
         }
         break;
       }
       default:
-        break; // ignore unhandled types (still 200 so Stripe stops retrying)
+        break; // ignore unhandled types (still 200 so Cashfree stops retrying)
     }
     return { received: true };
   }
+}
+
+/** Minimal shape of the Cashfree webhook payloads we consume. */
+interface CashfreeWebhook {
+  type: string;
+  data?: {
+    order?: { order_id?: string };
+    payment?: { cf_payment_id?: string | number; payment_status?: string };
+    refund?: { cf_refund_id?: string | number; refund_status?: string };
+  };
 }

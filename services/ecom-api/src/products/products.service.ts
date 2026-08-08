@@ -68,10 +68,7 @@ export class ProductsService implements OnModuleInit {
       }),
     );
     await this.prices.save([
-      this.prices.create({ productId: tee.id, country: 'US', currency: 'usd', amountMinor: 1999 }),
       this.prices.create({ productId: tee.id, country: 'IN', currency: 'inr', amountMinor: 49900 }),
-      this.prices.create({ productId: tee.id, country: 'GB', currency: 'gbp', amountMinor: 1599 }),
-      this.prices.create({ productId: shoes.id, country: 'US', currency: 'usd', amountMinor: 8999 }),
       this.prices.create({ productId: shoes.id, country: 'IN', currency: 'inr', amountMinor: 749900 }),
     ]);
     this.logger.log('Seeded demo products + per-country prices');

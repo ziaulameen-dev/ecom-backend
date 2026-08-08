@@ -1,11 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { AddressesService } from '../addresses/addresses.service';
 import { CartService } from '../cart/cart.service';
+import { CashfreeService } from '../cashfree/cashfree.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { ShippingService } from '../shipping/shipping.service';
-import { StripeService } from '../stripe/stripe.service';
 import { Order } from './order.entity';
 import { OrdersService } from './orders.service';
 
@@ -21,7 +22,7 @@ function makeRepo() {
 describe('OrdersService', () => {
   let repo: jest.Mocked<Repository<Order>>;
   let products: { decrementStock: jest.Mock; incrementStock: jest.Mock };
-  let stripe: { refund: jest.Mock; recordTax: jest.Mock; cancelPaymentIntent: jest.Mock };
+  let cashfree: { refund: jest.Mock };
   let carts: { resolveOrCreate: jest.Mock; clear: jest.Mock };
   let mail: { sendOrderUpdate: jest.Mock };
   let service: OrdersService;
@@ -32,11 +33,7 @@ describe('OrdersService', () => {
       decrementStock: jest.fn(),
       incrementStock: jest.fn().mockResolvedValue(undefined),
     };
-    stripe = {
-      refund: jest.fn().mockResolvedValue({ fullyRefunded: true }),
-      recordTax: jest.fn().mockResolvedValue(undefined),
-      cancelPaymentIntent: jest.fn().mockResolvedValue(undefined),
-    };
+    cashfree = { refund: jest.fn().mockResolvedValue(undefined) };
     carts = {
       resolveOrCreate: jest.fn().mockResolvedValue({ cart: { id: 'c1' } }),
       clear: jest.fn().mockResolvedValue(undefined),
@@ -48,8 +45,9 @@ describe('OrdersService', () => {
       {} as AddressesService,
       {} as ShippingService,
       products as unknown as ProductsService,
-      stripe as unknown as StripeService,
+      cashfree as unknown as CashfreeService,
       mail as unknown as MailService,
+      { get: jest.fn() } as unknown as ConfigService,
     );
   });
 
@@ -57,10 +55,9 @@ describe('OrdersService', () => {
     ({
       id: 'o1',
       status: 'pending',
-      stripePaymentIntentId: 'pi_1',
+      paymentRef: 'cf_1',
       totalMinor: 300,
       refundedMinor: 0,
-      taxCalculationId: null,
       userId: 'u1',
       items: [
         { productId: 'p1', quantity: 1 },
@@ -68,13 +65,13 @@ describe('OrdersService', () => {
       ],
     }) as Order;
 
-  describe('markPaidByPaymentIntent', () => {
+  describe('markPaidByRef', () => {
     it('marks paid + clears cart when all stock decrements succeed', async () => {
       repo.findOne.mockResolvedValue(pendingOrder());
       products.decrementStock.mockResolvedValue(true);
-      await service.markPaidByPaymentIntent('pi_1');
+      await service.markPaidByRef('cf_1');
       expect(carts.clear).toHaveBeenCalled();
-      expect(stripe.refund).not.toHaveBeenCalled();
+      expect(cashfree.refund).not.toHaveBeenCalled();
       const saved = repo.save.mock.calls.at(-1)![0] as Order;
       expect(saved.status).toBe('paid');
     });
@@ -83,8 +80,10 @@ describe('OrdersService', () => {
       repo.findOne.mockResolvedValue(pendingOrder());
       // first line ok, second line out of stock
       products.decrementStock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-      await service.markPaidByPaymentIntent('pi_1');
-      expect(stripe.refund).toHaveBeenCalledWith('pi_1'); // full auto-refund
+      await service.markPaidByRef('cf_1');
+      expect(cashfree.refund).toHaveBeenCalledWith(
+        expect.objectContaining({ cfOrderId: 'cf_1', amountMinor: 300 }),
+      );
       expect(products.incrementStock).toHaveBeenCalledWith('p1', 1); // rollback
       expect(carts.clear).not.toHaveBeenCalled();
       const saved = repo.save.mock.calls.at(-1)![0] as Order;
@@ -94,7 +93,7 @@ describe('OrdersService', () => {
 
     it('is idempotent (ignores already-paid orders)', async () => {
       repo.findOne.mockResolvedValue({ ...pendingOrder(), status: 'paid' } as Order);
-      await service.markPaidByPaymentIntent('pi_1');
+      await service.markPaidByRef('cf_1');
       expect(products.decrementStock).not.toHaveBeenCalled();
     });
   });

@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
-import { StripeService } from '../stripe/stripe.service';
+import { CashfreeService } from '../cashfree/cashfree.service';
 import { OrdersService } from './orders.service';
 import { ReturnLine, ReturnRequest, ReturnStatus } from './return-request.entity';
 
@@ -20,7 +20,7 @@ export class ReturnsService {
     @InjectRepository(ReturnRequest)
     private readonly returns: Repository<ReturnRequest>,
     private readonly orders: OrdersService,
-    private readonly stripe: StripeService,
+    private readonly cashfree: CashfreeService,
     private readonly products: ProductsService,
   ) {}
 
@@ -128,8 +128,12 @@ export class ReturnsService {
         oi.returnedQuantity += line.quantity; // track to prevent over-returns
       }
     }
-    if (refundMinor > 0 && order.stripePaymentIntentId) {
-      await this.stripe.refund(order.stripePaymentIntentId, refundMinor);
+    if (refundMinor > 0 && order.paymentRef) {
+      await this.cashfree.refund({
+        cfOrderId: order.paymentRef,
+        amountMinor: refundMinor,
+        refundId: `return_${rr.id}`,
+      });
     }
     for (const line of rr.items) {
       await this.products.incrementStock(line.productId, line.quantity);

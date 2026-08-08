@@ -6,16 +6,17 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { AddressesService } from '../addresses/addresses.service';
 import { CartService } from '../cart/cart.service';
+import { CashfreeService } from '../cashfree/cashfree.service';
 import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { ShippingService } from '../shipping/shipping.service';
-import { StripeService } from '../stripe/stripe.service';
 import { OrderItem } from './order-item.entity';
 import { Order, OrderStatus } from './order.entity';
 
-/** What checkout returns to the client (to confirm payment with Stripe). */
+/** What checkout returns to the client (to complete payment with Cashfree). */
 export interface CheckoutResult {
   orderId: string;
   status: OrderStatus;
@@ -26,14 +27,13 @@ export interface CheckoutResult {
     taxMinor: number;
     totalMinor: number;
   };
-  clientSecret: string | null;
-  publishableKey: string;
+  paymentSessionId: string;
+  appId: string;
+  mode: string; // 'sandbox' | 'production' — for the Cashfree JS SDK
 }
 
-/** Rough per-currency Stripe minimum charge (minor units); default 50. */
-const MIN_CHARGE_MINOR: Record<string, number> = {
-  usd: 50, eur: 50, gbp: 30, inr: 50, aud: 50, cad: 50, jpy: 50,
-};
+/** Minimum chargeable amount (minor units); Cashfree INR minimum is ~₹1. */
+const MIN_CHARGE_MINOR = 100;
 
 @Injectable()
 export class OrdersService {
@@ -45,12 +45,13 @@ export class OrdersService {
     private readonly addresses: AddressesService,
     private readonly shipping: ShippingService,
     private readonly products: ProductsService,
-    private readonly stripe: StripeService,
+    private readonly cashfree: CashfreeService,
     private readonly mail: MailService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
-   * Turn the user's cart into a pending order + Stripe PaymentIntent. Prices are
+   * Turn the user's cart into a pending order + Cashfree order. Prices are
    * snapshotted; the destination country (cart == address) drives price,
    * currency, shipping, and tax. Stock is only decremented once payment is
    * confirmed (webhook), but we validate availability here.
@@ -69,8 +70,8 @@ export class OrdersService {
       throw new BadRequestException('Cart is empty');
     }
 
-    // Idempotency: drop any earlier in-progress orders (+ their PaymentIntents)
-    // so a re-checkout doesn't leave duplicate pending orders / live PIs.
+    // Idempotency: drop any earlier in-progress orders so a re-checkout doesn't
+    // leave duplicate pending orders (unpaid Cashfree orders expire on their own).
     await this.cancelPendingForUser(userId);
 
     const address = await this.addresses.get(userId, addressId);
@@ -109,31 +110,18 @@ export class OrdersService {
     const shippingMinor =
       rate && rate.currency === currency ? rate.amountMinor : 0;
 
-    const tax = await this.stripe.calculateTax({
-      currency,
-      lineItems: view.items.map((l) => ({
-        amount: l.lineTotalMinor,
-        reference: l.productId,
-        quantity: l.quantity,
-      })),
-      shippingMinor,
-      country: address.country,
-      postalCode: address.postalCode,
-      state: address.state,
-      city: address.city,
-      line1: address.line1,
-    });
+    // Flat GST on the subtotal (percent from config; 0 by default).
+    const taxPercent = this.config.get<number>('taxPercent') ?? 0;
+    const taxMinor = Math.round((subtotalMinor * taxPercent) / 100);
 
-    const totalMinor = subtotalMinor + shippingMinor + tax.taxMinor;
+    const totalMinor = subtotalMinor + shippingMinor + taxMinor;
 
-    const min = MIN_CHARGE_MINOR[currency] ?? 50;
-    if (totalMinor < min) {
-      throw new BadRequestException(
-        `Order total is below the minimum chargeable amount for ${currency.toUpperCase()}`,
-      );
+    if (totalMinor < MIN_CHARGE_MINOR) {
+      throw new BadRequestException('Order total is below the minimum chargeable amount');
     }
 
-    // Persist the pending order first (source of truth), then attach the PI.
+    // Persist the pending order first (source of truth), then create the
+    // Cashfree order (its order_id == our order id).
     const order = await this.orders.save(
       Object.assign(new Order(), {
         userId,
@@ -142,9 +130,8 @@ export class OrdersService {
         currency,
         subtotalMinor,
         shippingMinor,
-        taxMinor: tax.taxMinor,
+        taxMinor,
         totalMinor,
-        taxCalculationId: tax.calculationId,
         shippingAddress: {
           fullName: address.fullName,
           phone: address.phone,
@@ -159,22 +146,25 @@ export class OrdersService {
       }),
     );
 
-    const pi = await this.stripe.createPaymentIntent({
+    const cf = await this.cashfree.createOrder({
+      orderId: order.id,
       amountMinor: totalMinor,
       currency,
-      orderId: order.id,
-      idempotencyKey: `order_${order.id}`,
+      customerId: userId,
+      customerEmail: email,
+      customerPhone: (address.phone || '').replace(/\D/g, '') || '9999999999',
     });
-    order.stripePaymentIntentId = pi.id;
+    order.paymentRef = cf.cfOrderId;
     await this.orders.save(order);
 
     return {
       orderId: order.id,
       status: order.status,
       currency,
-      amounts: { subtotalMinor, shippingMinor, taxMinor: tax.taxMinor, totalMinor },
-      clientSecret: pi.client_secret,
-      publishableKey: '', // filled by the controller from config
+      amounts: { subtotalMinor, shippingMinor, taxMinor, totalMinor },
+      paymentSessionId: cf.paymentSessionId,
+      appId: this.config.get<string>('cashfree.appId')!,
+      mode: this.config.get<string>('cashfree.env')!,
     };
   }
 
@@ -186,9 +176,9 @@ export class OrdersService {
    * payment, and cancel the order — so we never keep money for something we
    * can't ship. On success: record tax, clear the cart. Idempotent.
    */
-  async markPaidByPaymentIntent(paymentIntentId: string): Promise<void> {
+  async markPaidByRef(ref: string): Promise<void> {
     const order = await this.orders.findOne({
-      where: { stripePaymentIntentId: paymentIntentId },
+      where: { paymentRef: ref },
       relations: { items: true },
     });
     if (!order || !['pending', 'processing'].includes(order.status)) return;
@@ -206,8 +196,12 @@ export class OrdersService {
 
     if (oversold) {
       await this.restock(decremented); // roll back partial decrements
-      if (order.stripePaymentIntentId) {
-        await this.stripe.refund(order.stripePaymentIntentId); // full auto-refund
+      if (order.paymentRef) {
+        await this.cashfree.refund({
+          cfOrderId: order.paymentRef,
+          amountMinor: order.totalMinor,
+          refundId: `oversold_${order.id}`,
+        });
       }
       order.status = 'cancelled';
       order.refundedMinor = order.totalMinor;
@@ -219,9 +213,6 @@ export class OrdersService {
 
     order.status = 'paid';
     await this.orders.save(order);
-    if (order.taxCalculationId) {
-      await this.stripe.recordTax(order.taxCalculationId, order.id);
-    }
     const { cart } = await this.carts.resolveOrCreate({
       userId: order.userId,
       cookieCartId: null,
@@ -231,35 +222,18 @@ export class OrdersService {
     this.mailOrder(order, 'paid');
   }
 
-  async markProcessingByPaymentIntent(paymentIntentId: string): Promise<void> {
-    await this.orders.update(
-      { stripePaymentIntentId: paymentIntentId, status: 'pending' },
-      { status: 'processing' },
-    );
-  }
-
-  async markFailedByPaymentIntent(paymentIntentId: string): Promise<void> {
-    await this.orders.update(
-      { stripePaymentIntentId: paymentIntentId },
-      { status: 'failed' },
-    );
-  }
-
-  async markDisputedByPaymentIntent(paymentIntentId: string): Promise<void> {
-    await this.orders.update(
-      { stripePaymentIntentId: paymentIntentId },
-      { status: 'disputed' },
-    );
+  async markFailedByRef(ref: string): Promise<void> {
+    await this.orders.update({ paymentRef: ref }, { status: 'failed' });
   }
 
   /**
-   * Reconcile a FULL refund that happened outside the app (e.g. the Stripe
-   * Dashboard). If the app already handled it (status cancelled/refunded) this
+   * Reconcile a FULL refund that happened outside the app (e.g. the Cashfree
+   * dashboard). If the app already handled it (status cancelled/refunded) this
    * is a no-op, so we never double-restock.
    */
-  async markRefundedByPaymentIntent(paymentIntentId: string): Promise<void> {
+  async markRefundedByRef(ref: string): Promise<void> {
     const order = await this.orders.findOne({
-      where: { stripePaymentIntentId: paymentIntentId },
+      where: { paymentRef: ref },
       relations: { items: true },
     });
     if (!order || order.status === 'refunded' || order.status === 'cancelled') {
@@ -294,12 +268,16 @@ export class OrdersService {
       throw new BadRequestException(`Order is ${order.status}`);
     }
 
-    if (order.status === 'paid' && order.stripePaymentIntentId) {
-      await this.stripe.refund(order.stripePaymentIntentId); // full refund
-      await this.restock(order.items); // paid => stock was decremented
+    if (order.status === 'paid' && order.paymentRef) {
+      // Paid → refund the whole captured amount + restore stock. (Pending orders
+      // have no capture; the unpaid Cashfree order simply expires.)
+      await this.cashfree.refund({
+        cfOrderId: order.paymentRef,
+        amountMinor: order.totalMinor,
+        refundId: `cancel_${order.id}`,
+      });
+      await this.restock(order.items);
       order.refundedMinor = order.totalMinor;
-    } else if (order.status === 'pending' && order.stripePaymentIntentId) {
-      await this.stripe.cancelPaymentIntent(order.stripePaymentIntentId);
     }
     order.status = 'cancelled';
     await this.orders.save(order);
@@ -311,21 +289,23 @@ export class OrdersService {
   /** Admin full/partial refund. Full refunds restore stock + mark refunded. */
   async refund(id: string, amountMinor?: number): Promise<Order> {
     const order = await this.loadOwned(id, null);
-    if (!order.stripePaymentIntentId || order.status === 'pending') {
+    if (!order.paymentRef || order.status === 'pending') {
       throw new BadRequestException('Order has no captured payment to refund');
     }
     if (order.status === 'refunded' || order.status === 'cancelled') {
       throw new BadRequestException(`Order is ${order.status}`);
     }
     const refundAmount = amountMinor ?? order.totalMinor - order.refundedMinor;
-    const { fullyRefunded } = await this.stripe.refund(
-      order.stripePaymentIntentId,
-      amountMinor,
-    );
+    await this.cashfree.refund({
+      cfOrderId: order.paymentRef,
+      amountMinor: refundAmount,
+      refundId: `refund_${order.id}_${order.refundedMinor}`,
+    });
     order.refundedMinor = Math.min(
       order.totalMinor,
       order.refundedMinor + refundAmount,
     );
+    const fullyRefunded = order.refundedMinor >= order.totalMinor;
     if (fullyRefunded) {
       await this.restock(order.items);
       order.status = 'refunded';
@@ -336,33 +316,21 @@ export class OrdersService {
     return order;
   }
 
-  /** Cancel pending orders older than the cutoff (+ their PaymentIntents). */
+  /** Cancel pending orders older than the cutoff (unpaid Cashfree orders expire). */
   async sweepStalePending(olderThan: Date): Promise<number> {
-    const stale = await this.orders.find({
-      where: { status: 'pending', createdAt: LessThan(olderThan) },
-    });
-    for (const o of stale) {
-      if (o.stripePaymentIntentId) {
-        await this.stripe.cancelPaymentIntent(o.stripePaymentIntentId);
-      }
-      o.status = 'cancelled';
-    }
-    if (stale.length) await this.orders.save(stale);
-    return stale.length;
+    const res = await this.orders.update(
+      { status: 'pending', createdAt: LessThan(olderThan) },
+      { status: 'cancelled' },
+    );
+    return res.affected ?? 0;
   }
 
-  /** Cancel any in-progress (pending) orders for a user + their PaymentIntents. */
+  /** Cancel any in-progress (pending) orders for a user (idempotent checkout). */
   private async cancelPendingForUser(userId: string): Promise<void> {
-    const pendings = await this.orders.find({
-      where: { userId, status: 'pending' },
-    });
-    for (const o of pendings) {
-      if (o.stripePaymentIntentId) {
-        await this.stripe.cancelPaymentIntent(o.stripePaymentIntentId);
-      }
-      o.status = 'cancelled';
-    }
-    if (pendings.length) await this.orders.save(pendings);
+    await this.orders.update(
+      { userId, status: 'pending' },
+      { status: 'cancelled' },
+    );
   }
 
   /** Restore stock for a set of order lines. */

@@ -77,13 +77,10 @@ export class Order {
   @Column({ name: 'shipping_address', type: 'jsonb' })
   shippingAddress!: ShippingAddressSnapshot;
 
+  // The Cashfree order id (we use our own order id as the Cashfree order_id).
   @Index()
-  @Column({ name: 'stripe_payment_intent_id', type: 'varchar', nullable: true })
-  stripePaymentIntentId!: string | null;
-
-  // Stripe Tax calculation id — turned into a recorded tax transaction on paid.
-  @Column({ name: 'tax_calculation_id', type: 'varchar', nullable: true })
-  taxCalculationId!: string | null;
+  @Column({ name: 'payment_ref', type: 'varchar', nullable: true })
+  paymentRef!: string | null;
 
   // Shipment tracking (set by admin when shipping).
   @Column({ type: 'varchar', nullable: true })

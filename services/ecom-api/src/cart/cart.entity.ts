@@ -26,7 +26,7 @@ export class Cart {
   userId!: string | null;
 
   // ISO 3166-1 alpha-2 (uppercase). Determines pricing + currency.
-  @Column({ type: 'varchar', length: 2, default: 'US' })
+  @Column({ type: 'varchar', length: 2, default: 'IN' })
   country!: string;
 
   @OneToMany(() => CartItem, (i) => i.cart, { cascade: true })

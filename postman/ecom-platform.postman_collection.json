@@ -1,18 +1,9 @@
 {
   "info": {
     "name": "Ecom Platform (auth + ecom-api via nginx)",
-    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008).\n\nAUTH IS PASSWORDLESS (OTP) — signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet); response.isNewUser tells the frontend to show an optional name/mobile form\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nThis collection uses BEARER tokens throughout (token in the JSON body, saved to {{accessToken}}). Bearer requests are CSRF-EXEMPT, so no X-CSRF-Token is needed anywhere here. Cookie delivery is shown ONCE — see the 'Cookie mode example' — where CSRF DOES apply: cookie-mode POST/PATCH/DELETE must send `X-CSRF-Token: {{csrfToken}}` (that request saves it) or you get 403.\n\nRun order: 1. Request OTP -> 2. Read OTP from Mailpit -> 3. Verify OTP (bearer) -> 4-7 account management -> Ecom API (Profile / products).\n\nAuthenticated account routes (Bearer): GET /auth/me, PATCH /auth/profile, and a 3-step email change: POST /auth/email/change (OTP to OLD email) -> verify-old {newEmail, otp} (OTP to NEW email) -> verify-new {otp} (switch).\n\nDemo admin (seeded): admin@example.com (sign in with an OTP — no password).",
+    "description": "End-to-end collection for the microservices platform via the nginx gateway at {{baseUrl}} (default http://localhost:3008). India-only storefront (INR), payments via Cashfree.\n\nAUTH IS PASSWORDLESS (OTP) \u2014 signup and login are the SAME flow:\n  1. POST /auth/otp {email}  -> emails a 6-digit code via Mailpit (no token yet)\n  2. Read the code from Mailpit ({{mailpitUrl}}, default http://localhost:8028)\n  3. POST /auth/verify-otp {email,otp,name?,mobile?}  -> creates the account if new, returns the token\n\nUses BEARER tokens throughout (saved to {{accessToken}}); Bearer requests are CSRF-exempt. Cookie delivery + CSRF is shown once ('Cookie mode example').\n\nCOMMERCE FLOW (Ecom API): List products -> Add to cart (X-Cart-Id for guests) -> login -> Merge cart -> Create address -> Checkout (returns a Cashfree paymentSessionId) -> complete payment in the app with the Cashfree JS SDK. The webhook is the source of truth; the 'Cashfree webhook' request simulates it locally (signs the body with {{cashfreeSecretKey}}).\n\nAdmin (seeded admin@example.com): manage products, per-country prices, shipping rates, and order fulfilment / refunds / returns.\n\nIDs are auto-saved by test scripts: {{productId}}, {{cartId}}, {{addressId}}, {{orderId}}, {{returnId}}.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3008", "type": "string" },
-    { "key": "mailpitUrl", "value": "http://localhost:8028", "type": "string" },
-    { "key": "email", "value": "admin@example.com", "type": "string" },
-    { "key": "accessToken", "value": "", "type": "string" },
-    { "key": "otp", "value": "", "type": "string" },
-    { "key": "refreshToken", "value": "", "type": "string" },
-    { "key": "csrfToken", "value": "", "type": "string" }
-  ],
   "item": [
     {
       "name": "Gateway",
@@ -24,9 +15,51 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/gateway/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["gateway", "health"]
-            }
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gateway",
+                "health"
+              ]
+            },
+            "description": "nginx liveness (served by the gateway itself)."
+          }
+        },
+        {
+          "name": "Ecom API health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": "ecom-api readiness (DB check) via the gateway."
+          }
+        },
+        {
+          "name": "JWKS (public keys)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/jwks.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ".well-known",
+                "jwks.json"
+              ]
+            },
+            "description": "The auth-service's public keys; the ecom-api verifies tokens against these."
           }
         }
       ]
@@ -36,41 +69,60 @@
       "item": [
         {
           "name": "1. Request OTP (signup or login)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('OTP required (no token yet)', () => {",
-                  "  pm.expect(json.data.otpRequired).to.eql(true);",
-                  "  pm.expect(json.data.accessToken).to.be.undefined;",
-                  "});",
-                  "console.log('isNewUser =', json.data.isNewUser);",
-                  "pm.collectionVariables.set('email', JSON.parse(pm.request.body.raw).email);"
-                ]
-              }
-            }
-          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"admin@example.com\"\n}"
-            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/auth/otp",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "otp"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp"
+              ]
             },
-            "description": "Step 1 (passwordless): emails a 6-digit OTP (captured by Mailpit). Same endpoint whether the email is new (signup) or existing (login); response.isNewUser tells the UI whether to show the optional name/mobile form. No token is returned."
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Passwordless: emails a 6-digit code via Mailpit (no token yet). response.data.isNewUser tells the UI whether to show an optional name/mobile form at verify time."
           }
         },
         {
           "name": "2. Read OTP from Mailpit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/messages?limit=1",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Pulls the latest email from Mailpit and stores the 6-digit code in {{otp}}."
+          },
           "event": [
             {
               "listen": "test",
@@ -86,21 +138,39 @@
                 ]
               }
             }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{mailpitUrl}}/api/v1/messages?limit=1",
-              "host": ["{{mailpitUrl}}"],
-              "path": ["api", "v1", "messages"],
-              "query": [{ "key": "limit", "value": "1" }]
-            },
-            "description": "Reads the latest captured email from Mailpit and extracts the 6-digit OTP into {{otp}}. (In a real app the user reads this from their inbox.)"
-          }
+          ]
         },
         {
-          "name": "3. Verify OTP (bearer) — saves token",
+          "name": "3. Verify OTP (bearer) \u2014 saves token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Exchanges the OTP for a token (creates the account if new). Bearer mode returns the token in the body; the test script saves accessToken + refreshToken. For a NEW email you may also send optional \"name\", \"mobile\", \"locale\"."
+          },
           "event": [
             {
               "listen": "test",
@@ -115,199 +185,307 @@
                 ]
               }
             }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/auth/verify-otp",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "verify-otp"]
-            },
-            "description": "Step 2: exchanges the OTP for a token. Default (bearer) returns the token in the body; the script saves it to {{accessToken}}. For a NEW email you may also send optional \"name\" and \"mobile\" fields to fill the profile at signup."
-          }
+          ]
         },
         {
-          "name": "4. Get me (Bearer)",
+          "name": "Get me (Bearer)",
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/auth/me",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "me"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
             },
-            "description": "Returns the current user. Uses the Bearer token from step 3."
+            "description": "Current user from the token."
           }
         },
         {
-          "name": "5. Update profile (Bearer)",
+          "name": "Update profile (Bearer)",
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Admin User\",\n  \"mobile\": \"+15551234567\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/auth/profile",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "profile"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "profile"
+              ]
             },
-            "description": "Updates the optional name / mobile (both optional)."
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Name\",\n  \"mobile\": \"9999999999\",\n  \"locale\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "All fields optional."
           }
         },
         {
-          "name": "6. Change email - request OTP (Bearer)",
+          "name": "Email change 1 \u2014 request OTP to OLD email (Bearer)",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/auth/email/change",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "email", "change"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "email",
+                "change"
+              ]
             },
-            "description": "Step 1 of an email change: no body needed — just emails an OTP to the CURRENT address (proves control of the existing inbox). The new email is supplied at the next step. Then run '2. Read OTP from Mailpit' to capture {{otp}}."
+            "description": "Step 1 of 3: sends an OTP to the CURRENT email."
           }
         },
         {
-          "name": "7. Change email - verify OLD (Bearer)",
+          "name": "Email change 2 \u2014 verify OLD + set new (Bearer)",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"newEmail\": \"admin-new@example.com\",\n  \"otp\": \"{{otp}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/auth/email/verify-old",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "email", "verify-old"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "email",
+                "verify-old"
+              ]
             },
-            "description": "Step 2: supply the NEW email plus the OTP sent to the OLD one (run '2. Read OTP from Mailpit' first to load {{otp}}). On success the server saves newEmail as pending and emails a SECOND OTP to the NEW address. No switch yet."
-          }
-        },
-        {
-          "name": "8. Change email - verify NEW (Bearer)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "if (json.data && json.data.accessToken) pm.collectionVariables.set('accessToken', json.data.accessToken);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
+              "raw": "{\n  \"newEmail\": \"{{newEmail}}\",\n  \"otp\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": {
-              "raw": "{{baseUrl}}/auth/email/verify-new",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "email", "verify-new"]
-            },
-            "description": "Step 3: confirms the OTP sent to the NEW email (run '2. Read OTP from Mailpit' again to load the newer {{otp}}), switches the email, and re-issues the token — the script saves the fresh {{accessToken}}."
+            "description": "Step 2: verify the OLD-email OTP and register the desired new email; an OTP is then sent to the NEW email. (Read it from Mailpit again.)"
           }
         },
         {
-          "name": "9. Delete account - request OTP (Bearer)",
+          "name": "Email change 3 \u2014 verify NEW (Bearer)",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/email/verify-new",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "email",
+                "verify-new"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Step 3: verify the NEW-email OTP; the account email switches over."
+          }
+        },
+        {
+          "name": "Delete account 1 \u2014 request OTP (Bearer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/auth/account/delete",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "account", "delete"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "delete"
+              ]
             },
-            "description": "Step 1: emails an OTP to the current address to confirm this destructive, irreversible action. Then run '2. Read OTP from Mailpit'."
+            "description": "Sends a confirmation OTP to the account email."
           }
         },
         {
-          "name": "10. Delete account - verify (Bearer)",
+          "name": "Delete account 2 \u2014 verify (Bearer)",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/auth/account/delete/verify",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "account", "delete", "verify"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "delete",
+                "verify"
+              ]
             },
-            "description": "Step 2: confirms the OTP and soft-deletes (deactivates) the account. The email is freed for a fresh signup; old data is retained under deleted_email. Clears the cookie; the current token stops working on auth routes."
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Soft-deletes the account after OTP confirmation; the email is freed for reuse."
           }
         },
         {
-          "name": "Cookie mode example (X-Auth-Source: cookie) — saves CSRF",
+          "name": "Cookie mode example (X-Auth-Source: cookie) \u2014 saves CSRF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Auth-Source",
+                "value": "cookie"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "THE single cookie example. Everything else uses Bearer (CSRF-exempt). In cookie mode the server sets HttpOnly access/refresh cookies + a readable csrf_token cookie (also returned as data.csrfToken). Cookie-mode POST/PATCH/DELETE must send X-CSRF-Token: {{csrfToken}} or you get 403."
+          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// In cookie mode the server sets a readable csrf_token cookie AND",
-                  "// returns csrfToken in the body. Save it so cookie-mode state-changing",
-                  "// requests can send it as the X-CSRF-Token header.",
                   "const json = pm.response.json();",
                   "const csrf = (json.data && json.data.csrfToken) || pm.cookies.get('csrf_token');",
                   "if (csrf) pm.collectionVariables.set('csrfToken', csrf);"
                 ]
               }
             }
-          ],
+          ]
+        },
+        {
+          "name": "Refresh token (rotates) \u2014 saves new tokens",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Auth-Source", "value": "cookie" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}"
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": {
-              "raw": "{{baseUrl}}/auth/verify-otp",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "verify-otp"]
-            },
-            "description": "THE single cookie example. Everything else here uses Bearer (which is CSRF-exempt). To use cookie delivery, add `X-Auth-Source: cookie` to any token-issuing request: the server sets HttpOnly access/refresh cookies + a readable csrf_token cookie (also returned as data.csrfToken). Postman auto-sends the cookies afterward, so you can drop the Authorization header.\n\nCSRF: for cookie-mode STATE-CHANGING calls (POST/PATCH/DELETE) you MUST also send the header `X-CSRF-Token: {{csrfToken}}` (this request's test script saves it). GET is exempt; bearer requests are exempt. Without it you get 403. (Re-run Request OTP + Read OTP first; each OTP is single-use.)"
-          }
-        },
-        {
-          "name": "Refresh token (rotates) — saves new tokens",
+            "description": "Rotates the refresh token and issues a new access token. Bearer clients pass the token in the body; cookie clients rely on the refresh cookie."
+          },
           "event": [
             {
               "listen": "test",
@@ -315,43 +493,43 @@
                 "type": "text/javascript",
                 "exec": [
                   "const json = pm.response.json();",
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
                   "if (json.data && json.data.accessToken) pm.collectionVariables.set('accessToken', json.data.accessToken);",
                   "if (json.data && json.data.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
                 ]
               }
             }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/auth/refresh",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "refresh"]
-            },
-            "description": "Swaps a refresh token for a fresh access token WITHOUT re-doing the OTP flow. Single-use: the presented refresh token is rotated (revoked) and a new one issued — the script saves both. Reusing the old one returns 401. (Cookie clients omit the body; the token is read from the HttpOnly refresh cookie.)"
-          }
+          ]
         },
         {
           "name": "Logout (revokes refresh token)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
-            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/auth/logout",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "logout"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
             },
-            "description": "Revokes the presented refresh token and clears both auth cookies. Cookie clients can omit the body."
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Revokes this refresh token + denylists the access token's session (instant revocation)."
           }
         },
         {
@@ -359,26 +537,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/auth/logout-all",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "logout-all"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout-all"
+              ]
             },
-            "description": "Revokes EVERY active session for the current user. All existing refresh tokens stop working."
-          }
-        },
-        {
-          "name": "JWKS (public keys)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/.well-known/jwks.json",
-              "host": ["{{baseUrl}}"],
-              "path": [".well-known", "jwks.json"]
-            }
+            "description": "Revokes every session for the user."
           }
         }
       ]
@@ -387,96 +561,1433 @@
       "name": "Ecom API",
       "item": [
         {
-          "name": "Health (public)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "health"]
-            }
-          }
-        },
-        {
-          "name": "List products (public)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/products",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "products"]
-            }
-          }
-        },
-        {
-          "name": "Profile (Bearer)",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/profile",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "profile"]
-            },
-            "description": "Uses the Bearer token from 'Verify OTP (bearer)'."
-          }
-        },
-        {
-          "name": "Create product (admin, Bearer)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Cap\",\n  \"priceCents\": 1500,\n  \"stock\": 40\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/products",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "products"]
-            },
-            "description": "Requires an ADMIN token. Log in as admin and verify OTP first."
-          }
-        },
-        {
-          "name": "Create product WITHOUT auth (expect 401)",
-          "event": [
+          "name": "Catalog",
+          "item": [
             {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected with 401', () => pm.response.to.have.status(401));"
-                ]
+              "name": "List products (public)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products?country={{country}}&search=&category=&page=1&limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products"
+                  ],
+                  "query": [
+                    {
+                      "key": "country",
+                      "value": "{{country}}"
+                    },
+                    {
+                      "key": "search",
+                      "value": ""
+                    },
+                    {
+                      "key": "category",
+                      "value": ""
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50"
+                    }
+                  ]
+                },
+                "description": "Public catalog priced for ?country (default IN). Supports search/category/page/limit."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "if (Array.isArray(d) && d[0]) pm.collectionVariables.set('productId', d[0].id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get product (public)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products/{{productId}}?country={{country}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products",
+                    "{{productId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "country",
+                      "value": "{{country}}"
+                    }
+                  ]
+                },
+                "description": "Single product priced for ?country."
+              }
+            },
+            {
+              "name": "Create product (admin, Bearer)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Cap\",\n  \"description\": \"Classic cap\",\n  \"category\": \"apparel\",\n  \"stock\": 40\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "ADMIN only. Note: price is set separately via 'Set product price'. Saves {{productId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "if (d && d.id) pm.collectionVariables.set('productId', d.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update product (admin, Bearer)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products/{{productId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products",
+                    "{{productId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"description\": \"Updated description\",\n  \"stock\": 60\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "ADMIN only. All fields optional (name/description/imageUrl/category/stock)."
+              }
+            },
+            {
+              "name": "Delete product (admin, Bearer)",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products/{{productId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products",
+                    "{{productId}}"
+                  ]
+                },
+                "description": "ADMIN only."
+              }
+            },
+            {
+              "name": "List product prices (admin, Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products/{{productId}}/prices",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products",
+                    "{{productId}}",
+                    "prices"
+                  ]
+                },
+                "description": "ADMIN only. Per-country prices for the product."
+              }
+            },
+            {
+              "name": "Set product price for a country (admin, Bearer)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products/{{productId}}/prices",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products",
+                    "{{productId}}",
+                    "prices"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"country\": \"{{country}}\",\n  \"currency\": \"inr\",\n  \"amountMinor\": 49900\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "ADMIN only. Upsert the price (minor units) for a country."
+              }
+            },
+            {
+              "name": "Delete product price (admin, Bearer)",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products/{{productId}}/prices/{{country}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products",
+                    "{{productId}}",
+                    "prices",
+                    "{{country}}"
+                  ]
+                },
+                "description": "ADMIN only."
+              }
+            },
+            {
+              "name": "Create product WITHOUT auth (expect 401)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "products"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Nope\",\n  \"stock\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Negative test \u2014 no Authorization header, expect 401."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('rejected (401)', () => pm.response.to.have.status(401));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Shipping rates (admin)",
+          "item": [
+            {
+              "name": "List shipping rates",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shipping-rates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shipping-rates"
+                  ]
+                },
+                "description": "ADMIN only. Per-country delivery charges."
+              }
+            },
+            {
+              "name": "Set shipping rate for a country",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shipping-rates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shipping-rates"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"country\": \"{{country}}\",\n  \"currency\": \"inr\",\n  \"amountMinor\": 5000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "ADMIN only. Upsert the flat delivery charge (minor units) for a country."
+              }
+            },
+            {
+              "name": "Delete shipping rate",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shipping-rates/{{country}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shipping-rates",
+                    "{{country}}"
+                  ]
+                },
+                "description": "ADMIN only."
               }
             }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Auth-Source", "value": "bearer" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Hacker Hat\",\n  \"priceCents\": 1,\n  \"stock\": 1\n}"
+          ]
+        },
+        {
+          "name": "Cart (guest + user)",
+          "item": [
+            {
+              "name": "Add item to cart",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Cart-Id",
+                    "value": "{{cartId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/cart/items",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "cart",
+                    "items"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1,\n  \"country\": \"{{country}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Works for guests (send/echo X-Cart-Id) and logged-in users (also send Bearer). The response includes the cart id; the script saves it to {{cartId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "if (d && d.id) pm.collectionVariables.set('cartId', d.id);"
+                    ]
+                  }
+                }
+              ]
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/products",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "products"]
+            {
+              "name": "View cart",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Cart-Id",
+                    "value": "{{cartId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/cart?country={{country}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "cart"
+                  ],
+                  "query": [
+                    {
+                      "key": "country",
+                      "value": "{{country}}"
+                    }
+                  ]
+                },
+                "description": "Guest: send X-Cart-Id. User: send Bearer. Prices reflect ?country."
+              }
             },
-            "description": "Negative test — forces bearer source with no Authorization header -> 401."
-          }
+            {
+              "name": "Set cart country",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Cart-Id",
+                    "value": "{{cartId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/cart",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "cart"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"country\": \"{{country}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Changes pricing/currency for the cart."
+              }
+            },
+            {
+              "name": "Update item quantity",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Cart-Id",
+                    "value": "{{cartId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/cart/items/{{productId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "cart",
+                    "items",
+                    "{{productId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"quantity\": 2\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Set a line's quantity."
+              }
+            },
+            {
+              "name": "Remove item",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Cart-Id",
+                    "value": "{{cartId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/cart/items/{{productId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "cart",
+                    "items",
+                    "{{productId}}"
+                  ]
+                },
+                "description": "Remove a line from the cart."
+              }
+            },
+            {
+              "name": "Clear cart",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Cart-Id",
+                    "value": "{{cartId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/cart",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "cart"
+                  ]
+                },
+                "description": "Empty the cart."
+              }
+            },
+            {
+              "name": "Merge guest cart on login (Bearer)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Cart-Id",
+                    "value": "{{cartId}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/cart/merge",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "cart",
+                    "merge"
+                  ]
+                },
+                "description": "After login, merge the guest cart (X-Cart-Id) into the user's cart."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Addresses",
+          "item": [
+            {
+              "name": "List addresses (Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/addresses",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "addresses"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get address (Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/addresses/{{addressId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "addresses",
+                    "{{addressId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create address (Bearer)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/addresses",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "addresses"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Test User\",\n  \"phone\": \"9999999999\",\n  \"line1\": \"1 MG Road\",\n  \"city\": \"Bengaluru\",\n  \"state\": \"KA\",\n  \"postalCode\": \"560001\",\n  \"country\": \"{{country}}\",\n  \"isDefault\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Saves {{addressId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "if (d && d.id) pm.collectionVariables.set('addressId', d.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update address (Bearer)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/addresses/{{addressId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "addresses",
+                    "{{addressId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"city\": \"Mumbai\",\n  \"postalCode\": \"400001\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "All fields optional."
+              }
+            },
+            {
+              "name": "Delete address (Bearer)",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/addresses/{{addressId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "addresses",
+                    "{{addressId}}"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Profile",
+          "item": [
+            {
+              "name": "Profile (Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/profile",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "profile"
+                  ]
+                },
+                "description": "The ecom-api's view of the current user (from the token)."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Checkout & Payment (Cashfree)",
+          "item": [
+            {
+              "name": "Checkout (Bearer) \u2014 creates order + Cashfree session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/checkout",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "checkout"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"addressId\": \"{{addressId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Turns the cart into a pending order and creates a Cashfree order. Returns paymentSessionId (for the Cashfree JS SDK), appId, and mode. Saves {{orderId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "pm.test('got a payment session', () => pm.expect(d.paymentSessionId).to.be.a('string'));",
+                      "if (d && d.orderId) pm.collectionVariables.set('orderId', d.orderId);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Cashfree webhook \u2014 simulate PAYMENT_SUCCESS (signed)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-webhook-signature",
+                    "value": "{{cfWebhookSig}}"
+                  },
+                  {
+                    "key": "x-webhook-timestamp",
+                    "value": "{{cfWebhookTs}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/payments/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "payments",
+                    "webhook"
+                  ]
+                },
+                "description": "PUBLIC. Simulates Cashfree's server-to-server callback (the real one is sent by Cashfree to $PUBLIC_BASE_URL/api/payments/webhook). The pre-request script signs the body with {{cashfreeSecretKey}}; on success the order flips to paid, stock decrements, and the cart clears. In production you do NOT call this \u2014 Cashfree does.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{{cfWebhookBody}}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Build a signed Cashfree webhook for the current {{orderId}}.",
+                      "// Requires collection var cashfreeSecretKey = your CASHFREE_SECRET_KEY.",
+                      "const secret = pm.collectionVariables.get('cashfreeSecretKey');",
+                      "const orderId = pm.collectionVariables.get('orderId');",
+                      "if (!secret) { console.warn('Set cashfreeSecretKey to sign the webhook'); }",
+                      "const ts = new Date().toISOString();",
+                      "const body = JSON.stringify({",
+                      "  type: 'PAYMENT_SUCCESS_WEBHOOK',",
+                      "  data: {",
+                      "    order: { order_id: orderId, order_amount: 499.00, order_currency: 'INR' },",
+                      "    payment: { cf_payment_id: Date.now(), payment_status: 'SUCCESS', payment_amount: 499.00 }",
+                      "  },",
+                      "  event_time: ts",
+                      "});",
+                      "const sig = CryptoJS.enc.Base64.stringify(CryptoJS.HmacSHA256(ts + body, secret));",
+                      "pm.collectionVariables.set('cfWebhookBody', body);",
+                      "pm.collectionVariables.set('cfWebhookTs', ts);",
+                      "pm.collectionVariables.set('cfWebhookSig', sig);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Orders (customer)",
+          "item": [
+            {
+              "name": "List my orders (Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/orders?page=1&limit=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "orders"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Paginated order history for the current user."
+              }
+            },
+            {
+              "name": "Get my order (Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "orders",
+                    "{{orderId}}"
+                  ]
+                },
+                "description": "Order detail (poll this after checkout until status = paid)."
+              }
+            },
+            {
+              "name": "Cancel my order (Bearer)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/orders/{{orderId}}/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "orders",
+                    "{{orderId}}",
+                    "cancel"
+                  ]
+                },
+                "description": "Pending \u2192 cancelled (order expires). Paid & not shipped \u2192 full refund + restock. Shipped/delivered \u2192 blocked (use a return)."
+              }
+            },
+            {
+              "name": "Request a return / RMA (Bearer)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/orders/{{orderId}}/returns",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "orders",
+                    "{{orderId}}",
+                    "returns"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Defective\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "For shipped/delivered/fulfilled orders. Saves {{returnId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "if (d && d.id) pm.collectionVariables.set('returnId', d.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List my returns (Bearer)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/returns",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "returns"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2014 orders & returns",
+          "item": [
+            {
+              "name": "List all orders (admin)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/orders?page=1&limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "orders"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update order status (admin)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/orders/{{orderId}}/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "orders",
+                    "{{orderId}}",
+                    "status"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"shipped\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Fulfillment track only: paid\u2192fulfilled|shipped, fulfilled\u2192shipped, shipped\u2192delivered. Money-states (refunded/cancelled) are rejected here \u2014 use cancel/refund."
+              }
+            },
+            {
+              "name": "Set tracking (admin)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/orders/{{orderId}}/tracking",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "orders",
+                    "{{orderId}}",
+                    "tracking"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carrier\": \"BlueDart\",\n  \"trackingNumber\": \"BD123456789\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Cancel order (admin)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/orders/{{orderId}}/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "orders",
+                    "{{orderId}}",
+                    "cancel"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Refund order (admin, full or partial)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/orders/{{orderId}}/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "orders",
+                    "{{orderId}}",
+                    "refund"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"amountMinor\": 49900\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Omit amountMinor for a FULL refund (restores stock \u2192 refunded). Partial keeps status paid and bumps refundedMinor. Cashfree refunds settle asynchronously."
+              }
+            },
+            {
+              "name": "List all returns (admin)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/returns",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "returns"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Transition a return (admin)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/returns/{{returnId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "returns",
+                    "{{returnId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"approve\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "action: approve | reject | receive | refund. Money + stock only move on 'refund' (after the goods are 'received')."
+              }
+            }
+          ]
         }
-      ]
+      ],
+      "description": "Everything under /api via the nginx gateway. Typical flow: List products \u2192 Add item to cart \u2192 (login) \u2192 Merge cart \u2192 Create address \u2192 Checkout \u2192 simulate the Cashfree webhook \u2192 poll the order \u2192 admin fulfil/ship/deliver \u2192 cancel/refund/returns."
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3008"
+    },
+    {
+      "key": "mailpitUrl",
+      "value": "http://localhost:8028"
+    },
+    {
+      "key": "email",
+      "value": "admin@example.com"
+    },
+    {
+      "key": "newEmail",
+      "value": "new-email@example.com"
+    },
+    {
+      "key": "country",
+      "value": "IN"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "csrfToken",
+      "value": ""
+    },
+    {
+      "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "cartId",
+      "value": ""
+    },
+    {
+      "key": "addressId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "returnId",
+      "value": ""
+    },
+    {
+      "key": "cashfreeSecretKey",
+      "value": ""
+    },
+    {
+      "key": "cfWebhookBody",
+      "value": ""
+    },
+    {
+      "key": "cfWebhookSig",
+      "value": ""
+    },
+    {
+      "key": "cfWebhookTs",
+      "value": ""
     }
   ]
 }

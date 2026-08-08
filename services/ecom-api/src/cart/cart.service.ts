@@ -206,7 +206,7 @@ export class CartService {
     return this.carts.save(
       this.carts.create({
         userId,
-        country: (country ?? 'US').toUpperCase(),
+        country: (country ?? 'IN').toUpperCase(),
       }),
     );
   }

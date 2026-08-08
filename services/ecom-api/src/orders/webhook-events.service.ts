@@ -3,10 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
 /**
- * Deduplicates Stripe webhook events by id (Stripe may deliver an event more
- * than once). `firstDelivery(id)` returns true only the first time an id is
- * seen; a Redis blip fails OPEN (returns true) so we never silently drop a
- * legitimate event — the handlers are idempotent anyway.
+ * Deduplicates Cashfree webhook events by a caller-supplied key (Cashfree may
+ * deliver an event more than once and has no stable event id).
+ * `firstDelivery(key)` returns true only the first time a key is seen; a Redis
+ * blip fails OPEN (returns true) so we never silently drop a legitimate event —
+ * the handlers are idempotent anyway.
  */
 @Injectable()
 export class WebhookEventsService implements OnModuleDestroy {
@@ -22,11 +23,11 @@ export class WebhookEventsService implements OnModuleDestroy {
     this.redis.on('error', (e) => this.logger.warn(`Redis: ${e.message}`));
   }
 
-  async firstDelivery(eventId: string): Promise<boolean> {
+  async firstDelivery(eventKey: string): Promise<boolean> {
     try {
       // SET key NX with a 24h TTL — succeeds only the first time.
       const res = await this.redis.set(
-        `stripe:evt:${eventId}`,
+        `cf:evt:${eventKey}`,
         '1',
         'EX',
         86400,

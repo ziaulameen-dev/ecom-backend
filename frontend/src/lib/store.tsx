@@ -52,7 +52,7 @@ export const useStore = () => {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [cart, setCart] = useState<Cart | null>(null);
-  const [country, setCountryState] = useState('US');
+  const [country, setCountryState] = useState('IN');
   const [ready, setReady] = useState(false);
 
   const applyCart = (c: Cart) => {
@@ -61,7 +61,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshCart = useCallback(async () => {
-    const c = await get(`/api/cart?country=${localStorage.getItem('ecom_country') || 'US'}`);
+    const c = await get(`/api/cart?country=${localStorage.getItem('ecom_country') || 'IN'}`);
     applyCart(c);
     setCountryState(c.country);
   }, []);
@@ -90,7 +90,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const c = await post('/api/cart/items', {
       productId,
       quantity,
-      country: localStorage.getItem('ecom_country') || 'US',
+      country: localStorage.getItem('ecom_country') || 'IN',
     });
     applyCart(c);
   }, []);
