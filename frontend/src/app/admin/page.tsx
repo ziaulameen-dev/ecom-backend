@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { get, patch, post, put } from '@/lib/api';
+import { del, get, patch, post, put } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { COUNTRIES, money } from '@/lib/utils';
 
@@ -20,11 +20,100 @@ export default function AdminPage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-semibold">Admin</h1>
+      <ProductsSection />
       <PricesSection />
       <ShippingSection />
       <OrdersSection />
       <ReturnsSection />
     </div>
+  );
+}
+
+interface AdminProduct {
+  id: string; name: string; stock: number; category: string | null;
+  description: string | null; imageUrl: string | null;
+}
+
+function ProductsSection() {
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [stockEdits, setStockEdits] = useState<Record<string, number>>({});
+  const [form, setForm] = useState({ name: '', stock: 0, category: '', imageUrl: '', description: '' });
+  const [msg, setMsg] = useState('');
+
+  const load = () => get('/api/products?country=US').then(setProducts).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  async function saveStock(id: string) {
+    const stock = stockEdits[id];
+    if (stock == null) return;
+    await patch(`/api/products/${id}`, { stock: Number(stock) });
+    setStockEdits((s) => { const n = { ...s }; delete n[id]; return n; });
+    await load();
+  }
+  async function create() {
+    setMsg('');
+    try {
+      await post('/api/products', {
+        name: form.name,
+        stock: Number(form.stock),
+        category: form.category || undefined,
+        imageUrl: form.imageUrl || undefined,
+        description: form.description || undefined,
+      });
+      setForm({ name: '', stock: 0, category: '', imageUrl: '', description: '' });
+      setMsg('Created ✓ — set its per-country price below.');
+      await load();
+    } catch (e) { setMsg((e as Error).message); }
+  }
+  async function remove(id: string) {
+    if (!confirm('Delete this product?')) return;
+    await del(`/api/products/${id}`);
+    await load();
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Products & stock</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {products.map((p) => (
+          <div key={p.id} className="flex flex-wrap items-center gap-3 text-sm border-b py-2">
+            <span className="font-medium">{p.name}</span>
+            {p.category && <span className="text-muted-foreground capitalize">{p.category}</span>}
+            <div className="ml-auto flex items-center gap-2">
+              <Label className="text-muted-foreground">Stock</Label>
+              <Input
+                type="number"
+                className="h-9 w-24"
+                value={stockEdits[p.id] ?? p.stock}
+                onChange={(e) => setStockEdits((s) => ({ ...s, [p.id]: Number(e.target.value) }))}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={stockEdits[p.id] == null || stockEdits[p.id] === p.stock}
+                onClick={() => saveStock(p.id)}
+              >
+                Save
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => remove(p.id)}>Delete</Button>
+            </div>
+          </div>
+        ))}
+
+        <div className="pt-2 border-t">
+          <p className="text-sm font-medium mb-2">Add product</p>
+          <div className="grid gap-2 sm:grid-cols-6 items-end">
+            <div className="space-y-1 sm:col-span-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="space-y-1"><Label>Stock</Label><Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })} /></div>
+            <div className="space-y-1"><Label>Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></div>
+            <div className="space-y-1 sm:col-span-2"><Label>Image URL</Label><Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} /></div>
+            <div className="space-y-1 sm:col-span-5"><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+            <Button disabled={form.name.length < 2} onClick={create}>Add</Button>
+          </div>
+          {msg && <p className="text-sm mt-2">{msg}</p>}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
