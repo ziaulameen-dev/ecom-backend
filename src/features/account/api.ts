@@ -59,6 +59,15 @@ export function useOrder(id: string, options?: { refetchInterval?: number }) {
   });
 }
 
+export function useCancelOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; reason?: string }) =>
+      api.post(`/api/orders/${input.id}/cancel`, input.reason ? { reason: input.reason } : {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: accountKeys.orders }),
+  });
+}
+
 // ---- Profile --------------------------------------------------------------
 
 export function useUpdateProfile() {
