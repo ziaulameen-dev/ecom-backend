@@ -2,7 +2,6 @@ import {
   IsBoolean,
   IsOptional,
   IsString,
-  Length,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -43,10 +42,6 @@ export class CreateAddressDto {
   @IsString()
   @MaxLength(20)
   postalCode?: string;
-
-  @IsString()
-  @Length(2, 2)
-  country!: string; // ISO 3166-1 alpha-2
 
   @IsOptional()
   @IsBoolean()

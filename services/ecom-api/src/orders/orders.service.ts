@@ -75,20 +75,12 @@ export class OrdersService {
     await this.cancelPendingForUser(userId);
 
     const address = await this.addresses.get(userId, addressId);
-    if (address.country !== cart.country) {
-      throw new BadRequestException(
-        `Cart country (${cart.country}) must match the shipping country (${address.country})`,
-      );
-    }
-    if (!view.currency) {
-      throw new BadRequestException('Cart has no priced items for this country');
-    }
 
     // Validate availability + build snapshotted line items.
     const items: OrderItem[] = [];
     for (const line of view.items) {
-      if (!line.available || line.unitAmountMinor == null) {
-        throw new BadRequestException(`"${line.name}" is not available here`);
+      if (!line.available) {
+        throw new BadRequestException(`"${line.name}" is not available`);
       }
       if (line.quantity > line.stock) {
         throw new BadRequestException(`Not enough stock for "${line.name}"`);
@@ -103,12 +95,11 @@ export class OrdersService {
       );
     }
 
-    const currency = view.currency;
+    const currency = view.currency; // always 'inr'
     const subtotalMinor = view.subtotalMinor;
 
-    const rate = await this.shipping.getForCountry(cart.country);
-    const shippingMinor =
-      rate && rate.currency === currency ? rate.amountMinor : 0;
+    const rate = await this.shipping.get();
+    const shippingMinor = rate?.amountMinor ?? 0;
 
     // Flat GST on the subtotal (percent from config; 0 by default).
     const taxPercent = this.config.get<number>('taxPercent') ?? 0;

@@ -1,9 +1,9 @@
 # Orders, Shipping, Returns & Cancellations
 
 How an order moves from cart to delivered, and every way money and stock can
-flow back (cancel, refund, return). All money is in **minor units** (paise) and
-every order is tied to one **currency** and one **destination country** (which
-drives price, currency, shipping, and tax). The store is **India-only (INR)**.
+flow back (cancel, refund, return). All money is in **minor units** (paise). The
+store is **India-only (INR)**: each product carries a single INR price and there
+is one flat delivery charge.
 
 Everything below lives in the **ecom-api** (`src/orders/*`, `src/cart/*`,
 `src/products/*`). Payment is **Cashfree**; the **webhook is the source of
@@ -50,11 +50,10 @@ partial refunds/returns).
 ```
 POST /api/checkout { addressId }          (login required)
   1. load the user's cart (must be non-empty)
-  2. require cart.country == shipping address.country
-  3. cancel any earlier PENDING orders for this user   ← idempotency
-  4. snapshot line prices; compute subtotal
-  5. shipping = admin per-country rate; tax = flat TAX_PERCENT of subtotal (0 by default)
-  6. total = subtotal + shipping + tax   (rejected if below the ₹1 min charge)
+  2. cancel any earlier PENDING orders for this user   ← idempotency
+  3. snapshot line prices; compute subtotal
+  4. shipping = the flat delivery charge; tax = flat TAX_PERCENT of subtotal (0 by default)
+  5. total = subtotal + shipping + tax   (rejected if below the ₹1 min charge)
   7. save Order(pending) + snapshot the shipping address + customerEmail
   8. create a Cashfree order(total, INR) using OUR order id  → return payment_session_id
   ▼

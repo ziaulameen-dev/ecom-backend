@@ -2,7 +2,6 @@ import {
   IsBoolean,
   IsOptional,
   IsString,
-  Length,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -46,11 +45,6 @@ export class UpdateAddressDto {
   @IsString()
   @MaxLength(20)
   postalCode?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(2, 2)
-  country?: string;
 
   @IsOptional()
   @IsBoolean()

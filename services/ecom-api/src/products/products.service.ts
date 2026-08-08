@@ -7,12 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateProductDto } from './dto/create-product.dto';
-import { SetPriceDto } from './dto/set-price.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { ProductPrice } from './product-price.entity';
 import { Product } from './product.entity';
 
-/** A product shaped for a specific country (its price there, or null). */
+/** A product shaped for the storefront (India / INR). */
 export interface ProductView {
   id: string;
   name: string;
@@ -20,7 +18,7 @@ export interface ProductView {
   imageUrl: string | null;
   category: string | null;
   stock: number;
-  price: { currency: string; amountMinor: number } | null;
+  price: { currency: string; amountMinor: number };
 }
 
 /** Catalog filters. */
@@ -31,10 +29,10 @@ export interface CatalogQuery {
   limit?: number;
 }
 
-/**
- * Product business logic. Prices are per country (ProductPrice); the public
- * catalog is always resolved for a given destination country.
- */
+/** INR is the only currency (India-only store). */
+const CURRENCY = 'inr';
+
+/** Product business logic. Every product carries a single INR price. */
 @Injectable()
 export class ProductsService implements OnModuleInit {
   private readonly logger = new Logger(ProductsService.name);
@@ -42,46 +40,36 @@ export class ProductsService implements OnModuleInit {
   constructor(
     @InjectRepository(Product)
     private readonly products: Repository<Product>,
-    @InjectRepository(ProductPrice)
-    private readonly prices: Repository<ProductPrice>,
   ) {}
 
-  /** Seed demo products + prices (US/IN/GB) on first boot. */
+  /** Seed demo products (INR) on first boot. */
   async onModuleInit() {
     if ((await this.products.count()) > 0) return;
-    const tee = await this.products.save(
+    await this.products.save([
       this.products.create({
         name: 'T-Shirt',
         description: 'Soft 100% cotton tee.',
         category: 'apparel',
         imageUrl: 'https://placehold.co/600x400?text=T-Shirt',
         stock: 100,
+        priceMinor: 49900,
       }),
-    );
-    const shoes = await this.products.save(
       this.products.create({
         name: 'Sneakers',
         description: 'Everyday cushioned sneakers.',
         category: 'footwear',
         imageUrl: 'https://placehold.co/600x400?text=Sneakers',
         stock: 25,
+        priceMinor: 749900,
       }),
-    );
-    await this.prices.save([
-      this.prices.create({ productId: tee.id, country: 'IN', currency: 'inr', amountMinor: 49900 }),
-      this.prices.create({ productId: shoes.id, country: 'IN', currency: 'inr', amountMinor: 749900 }),
     ]);
-    this.logger.log('Seeded demo products + per-country prices');
+    this.logger.log('Seeded demo products');
   }
 
   // ---- Public catalog -------------------------------------------------------
 
-  /** List products (with search/category filters) priced for a country. */
-  async findAllForCountry(
-    country: string,
-    q: CatalogQuery = {},
-  ): Promise<ProductView[]> {
-    const cc = country.toUpperCase();
+  /** List products (with search/category filters). */
+  async findAll(q: CatalogQuery = {}): Promise<ProductView[]> {
     const limit = Math.min(Math.max(q.limit ?? 50, 1), 100);
     const page = Math.max(q.page ?? 1, 1);
 
@@ -94,29 +82,17 @@ export class ProductsService implements OnModuleInit {
     if (q.category) qb.andWhere('p.category = :c', { c: q.category });
 
     const products = await qb.getMany();
-    const prices = await this.prices.find({ where: { country: cc } });
-    const byProduct = new Map(prices.map((p) => [p.productId, p]));
-    return products.map((p) => this.toView(p, byProduct.get(p.id)));
+    return products.map((p) => this.toView(p));
   }
 
-  /** Resolve one product + its price for a country. Throws if the product is gone. */
-  async findOneForCountry(id: string, country: string): Promise<ProductView> {
+  /** Resolve one product. Throws if the product is gone. */
+  async findOne(id: string): Promise<ProductView> {
     const product = await this.products.findOne({ where: { id } });
     if (!product) throw new NotFoundException('Product not found');
-    const price = await this.prices.findOne({
-      where: { productId: id, country: country.toUpperCase() },
-    });
-    return this.toView(product, price ?? undefined);
+    return this.toView(product);
   }
 
-  /** The raw price row for a country (used by cart/checkout). */
-  priceFor(productId: string, country: string): Promise<ProductPrice | null> {
-    return this.prices.findOne({
-      where: { productId, country: country.toUpperCase() },
-    });
-  }
-
-  /** The raw product row (used by cart/checkout for name + stock). */
+  /** The raw product row (used by cart/checkout for name, price + stock). */
   findEntity(id: string): Promise<Product | null> {
     return this.products.findOne({ where: { id } });
   }
@@ -163,40 +139,13 @@ export class ProductsService implements OnModuleInit {
     if (!res.affected) throw new NotFoundException('Product not found');
   }
 
-  // ---- Admin: per-country prices --------------------------------------------
-
-  /** Upsert the price for (product, country). */
-  async setPrice(productId: string, dto: SetPriceDto): Promise<ProductPrice> {
-    await this.mustFind(productId);
-    const country = dto.country.toUpperCase();
-    const currency = dto.currency.toLowerCase();
-    const existing = await this.prices.findOne({ where: { productId, country } });
-    const row = existing ?? this.prices.create({ productId, country });
-    row.currency = currency;
-    row.amountMinor = dto.amountMinor;
-    return this.prices.save(row);
-  }
-
-  async listPrices(productId: string): Promise<ProductPrice[]> {
-    await this.mustFind(productId);
-    return this.prices.find({ where: { productId }, order: { country: 'ASC' } });
-  }
-
-  async deletePrice(productId: string, country: string): Promise<void> {
-    const res = await this.prices.delete({
-      productId,
-      country: country.toUpperCase(),
-    });
-    if (!res.affected) throw new NotFoundException('Price not found');
-  }
-
   private async mustFind(id: string): Promise<Product> {
     const product = await this.products.findOne({ where: { id } });
     if (!product) throw new NotFoundException('Product not found');
     return product;
   }
 
-  private toView(product: Product, price?: ProductPrice): ProductView {
+  private toView(product: Product): ProductView {
     return {
       id: product.id,
       name: product.name,
@@ -204,9 +153,7 @@ export class ProductsService implements OnModuleInit {
       imageUrl: product.imageUrl,
       category: product.category,
       stock: product.stock,
-      price: price
-        ? { currency: price.currency, amountMinor: price.amountMinor }
-        : null,
+      price: { currency: CURRENCY, amountMinor: product.priceMinor },
     };
   }
 }

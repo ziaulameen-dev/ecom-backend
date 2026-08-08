@@ -24,7 +24,7 @@ export default function CartPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-semibold mb-6">Cart ({cart.country})</h1>
+      <h1 className="text-2xl font-semibold mb-6">Cart</h1>
       <div className="space-y-3">
         {cart.items.map((it) => (
           <Card key={it.productId}>
@@ -33,7 +33,7 @@ export default function CartPage() {
                 <div className="font-medium">{it.name}</div>
                 <div className="text-sm text-muted-foreground">
                   {money(it.unitAmountMinor, cart.currency)}
-                  {!it.available && ' · unavailable here'}
+                  {!it.available && ' · unavailable'}
                 </div>
               </div>
               <div className="flex items-center gap-1">

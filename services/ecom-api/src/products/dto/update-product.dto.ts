@@ -33,4 +33,10 @@ export class UpdateProductDto {
   @IsInt()
   @Min(0)
   stock?: number;
+
+  // INR price in paise.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priceMinor?: number;
 }

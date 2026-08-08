@@ -569,7 +569,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/products?country={{country}}&search=&category=&page=1&limit=50",
+                  "raw": "{{baseUrl}}/api/products?search=&category=&page=1&limit=50",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -578,10 +578,6 @@
                     "products"
                   ],
                   "query": [
-                    {
-                      "key": "country",
-                      "value": "{{country}}"
-                    },
                     {
                       "key": "search",
                       "value": ""
@@ -600,7 +596,7 @@
                     }
                   ]
                 },
-                "description": "Public catalog priced for ?country (default IN). Supports search/category/page/limit."
+                "description": "Public catalog (India / INR). Supports search/category/page/limit."
               },
               "event": [
                 {
@@ -621,7 +617,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/products/{{productId}}?country={{country}}",
+                  "raw": "{{baseUrl}}/api/products/{{productId}}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -629,15 +625,9 @@
                     "api",
                     "products",
                     "{{productId}}"
-                  ],
-                  "query": [
-                    {
-                      "key": "country",
-                      "value": "{{country}}"
-                    }
                   ]
                 },
-                "description": "Single product priced for ?country."
+                "description": "Single product."
               }
             },
             {
@@ -666,14 +656,14 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Cap\",\n  \"description\": \"Classic cap\",\n  \"category\": \"apparel\",\n  \"stock\": 40\n}",
+                  "raw": "{\n  \"name\": \"Cap\",\n  \"priceMinor\": 49900,\n  \"description\": \"Classic cap\",\n  \"category\": \"apparel\",\n  \"stock\": 40\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
                   }
                 },
-                "description": "ADMIN only. Note: price is set separately via 'Set product price'. Saves {{productId}}."
+                "description": "ADMIN only. priceMinor is the INR price in paise. Saves {{productId}}."
               },
               "event": [
                 {
@@ -715,14 +705,14 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"description\": \"Updated description\",\n  \"stock\": 60\n}",
+                  "raw": "{\n  \"priceMinor\": 59900,\n  \"stock\": 60\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
                   }
                 },
-                "description": "ADMIN only. All fields optional (name/description/imageUrl/category/stock)."
+                "description": "ADMIN only. All fields optional (name/description/imageUrl/category/stock/priceMinor)."
               }
             },
             {
@@ -750,95 +740,6 @@
               }
             },
             {
-              "name": "List product prices (admin, Bearer)",
-              "request": {
-                "method": "GET",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/products/{{productId}}/prices",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "products",
-                    "{{productId}}",
-                    "prices"
-                  ]
-                },
-                "description": "ADMIN only. Per-country prices for the product."
-              }
-            },
-            {
-              "name": "Set product price for a country (admin, Bearer)",
-              "request": {
-                "method": "PUT",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  },
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/products/{{productId}}/prices",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "products",
-                    "{{productId}}",
-                    "prices"
-                  ]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"country\": \"{{country}}\",\n  \"currency\": \"inr\",\n  \"amountMinor\": 49900\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "description": "ADMIN only. Upsert the price (minor units) for a country."
-              }
-            },
-            {
-              "name": "Delete product price (admin, Bearer)",
-              "request": {
-                "method": "DELETE",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/products/{{productId}}/prices/{{country}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "products",
-                    "{{productId}}",
-                    "prices",
-                    "{{country}}"
-                  ]
-                },
-                "description": "ADMIN only."
-              }
-            },
-            {
               "name": "Create product WITHOUT auth (expect 401)",
               "request": {
                 "method": "POST",
@@ -860,7 +761,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Nope\",\n  \"stock\": 1\n}",
+                  "raw": "{\n  \"name\": \"Nope\",\n  \"priceMinor\": 100,\n  \"stock\": 1\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -884,33 +785,28 @@
           ]
         },
         {
-          "name": "Shipping rates (admin)",
+          "name": "Delivery charge",
           "item": [
             {
-              "name": "List shipping rates",
+              "name": "Get delivery charge (public)",
               "request": {
                 "method": "GET",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}"
-                  }
-                ],
+                "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/shipping-rates",
+                  "raw": "{{baseUrl}}/api/shipping-rate",
                   "host": [
                     "{{baseUrl}}"
                   ],
                   "path": [
                     "api",
-                    "shipping-rates"
+                    "shipping-rate"
                   ]
                 },
-                "description": "ADMIN only. Per-country delivery charges."
+                "description": "The single flat delivery charge (paise, INR)."
               }
             },
             {
-              "name": "Set shipping rate for a country",
+              "name": "Set delivery charge (admin, Bearer)",
               "request": {
                 "method": "PUT",
                 "header": [
@@ -924,49 +820,25 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/shipping-rates",
+                  "raw": "{{baseUrl}}/api/shipping-rate",
                   "host": [
                     "{{baseUrl}}"
                   ],
                   "path": [
                     "api",
-                    "shipping-rates"
+                    "shipping-rate"
                   ]
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"country\": \"{{country}}\",\n  \"currency\": \"inr\",\n  \"amountMinor\": 5000\n}",
+                  "raw": "{\n  \"amountMinor\": 5000\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
                   }
                 },
-                "description": "ADMIN only. Upsert the flat delivery charge (minor units) for a country."
-              }
-            },
-            {
-              "name": "Delete shipping rate",
-              "request": {
-                "method": "DELETE",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/shipping-rates/{{country}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "shipping-rates",
-                    "{{country}}"
-                  ]
-                },
-                "description": "ADMIN only."
+                "description": "ADMIN only. Set the single flat delivery charge (paise)."
               }
             }
           ]
@@ -1001,7 +873,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1,\n  \"country\": \"{{country}}\"\n}",
+                  "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -1034,39 +906,6 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/cart?country={{country}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "cart"
-                  ],
-                  "query": [
-                    {
-                      "key": "country",
-                      "value": "{{country}}"
-                    }
-                  ]
-                },
-                "description": "Guest: send X-Cart-Id. User: send Bearer. Prices reflect ?country."
-              }
-            },
-            {
-              "name": "Set cart country",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  },
-                  {
-                    "key": "X-Cart-Id",
-                    "value": "{{cartId}}"
-                  }
-                ],
-                "url": {
                   "raw": "{{baseUrl}}/api/cart",
                   "host": [
                     "{{baseUrl}}"
@@ -1076,16 +915,7 @@
                     "cart"
                   ]
                 },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"country\": \"{{country}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "description": "Changes pricing/currency for the cart."
+                "description": "Guest: send X-Cart-Id. User: send Bearer."
               }
             },
             {
@@ -1278,14 +1108,14 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"fullName\": \"Test User\",\n  \"phone\": \"9999999999\",\n  \"line1\": \"1 MG Road\",\n  \"city\": \"Bengaluru\",\n  \"state\": \"KA\",\n  \"postalCode\": \"560001\",\n  \"country\": \"{{country}}\",\n  \"isDefault\": true\n}",
+                  "raw": "{\n  \"fullName\": \"Test User\",\n  \"phone\": \"9999999999\",\n  \"line1\": \"1 MG Road\",\n  \"city\": \"Bengaluru\",\n  \"state\": \"KA\",\n  \"postalCode\": \"560001\",\n  \"isDefault\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
                   }
                 },
-                "description": "Saves {{addressId}}."
+                "description": "India-only, so country is always IN (not sent). Saves {{addressId}}."
               },
               "event": [
                 {
@@ -1932,10 +1762,6 @@
     {
       "key": "newEmail",
       "value": "new-email@example.com"
-    },
-    {
-      "key": "country",
-      "value": "IN"
     },
     {
       "key": "accessToken",

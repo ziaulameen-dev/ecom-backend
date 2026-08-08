@@ -5,7 +5,6 @@ import { Cart } from './cart/cart.entity';
 import { OrderItem } from './orders/order-item.entity';
 import { Order } from './orders/order.entity';
 import { ReturnRequest } from './orders/return-request.entity';
-import { ProductPrice } from './products/product-price.entity';
 import { Product } from './products/product.entity';
 import { ShippingRate } from './shipping/shipping-rate.entity';
 
@@ -23,7 +22,6 @@ export default new DataSource({
   database: process.env.ECOM_DB_NAME ?? 'ecomdb',
   entities: [
     Product,
-    ProductPrice,
     ShippingRate,
     Cart,
     CartItem,

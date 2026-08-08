@@ -8,8 +8,8 @@ import {
 } from 'typeorm';
 
 /**
- * A user's saved shipping address. Any country is allowed (ISO alpha-2). One
- * address per user may be marked default.
+ * A user's saved shipping address. India-only store, so `country` is always
+ * 'IN'. One address per user may be marked default.
  */
 @Entity('addresses')
 export class Address {
@@ -41,8 +41,8 @@ export class Address {
   @Column({ name: 'postal_code', type: 'varchar', nullable: true })
   postalCode!: string | null;
 
-  // ISO 3166-1 alpha-2 (uppercase).
-  @Column({ type: 'varchar', length: 2 })
+  // ISO 3166-1 alpha-2 — always 'IN' (India-only store).
+  @Column({ type: 'varchar', length: 2, default: 'IN' })
   country!: string;
 
   @Column({ name: 'is_default', default: false })

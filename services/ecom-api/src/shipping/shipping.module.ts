@@ -5,7 +5,7 @@ import { ShippingController } from './shipping.controller';
 import { ShippingRate } from './shipping-rate.entity';
 import { ShippingService } from './shipping.service';
 
-/** Per-country delivery charges (admin-managed). */
+/** Single flat delivery charge (admin-managed). */
 @Module({
   imports: [TypeOrmModule.forFeature([ShippingRate]), AuthModule],
   controllers: [ShippingController],

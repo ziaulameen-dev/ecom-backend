@@ -4,11 +4,10 @@ import { ShoppingCart, Store } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { COUNTRIES } from '@/lib/utils';
 import { useStore } from '@/lib/store';
 
 export function Nav() {
-  const { cart, user, isAdmin, country, setCountry, logout } = useStore();
+  const { cart, user, isAdmin, logout } = useStore();
   return (
     <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-10">
       <div className="container flex h-14 items-center gap-4">
@@ -24,16 +23,6 @@ export function Nav() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <select
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-          >
-            {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>{c.code}</option>
-            ))}
-          </select>
-
           <Link href="/cart" className="relative">
             <Button variant="outline" size="icon">
               <ShoppingCart className="h-4 w-4" />

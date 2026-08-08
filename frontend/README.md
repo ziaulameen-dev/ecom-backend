@@ -26,6 +26,6 @@ npm run dev                        # http://localhost:3000
 - **Payment**: Cashfree checkout (modal). Use a sandbox test UPI like
   `success@upi`, or test card `4111 1111 1111 1111` (any future date / CVC). The
   order flips to `paid` via the Cashfree webhook (needs the ngrok tunnel running).
-- **Admin**: sign in as `admin@example.com` to manage per-country prices, delivery
-  charges, and order statuses.
-- Country selector (top bar) drives pricing/currency; one currency per cart.
+- **Admin**: sign in as `admin@example.com` to manage products (INR price + stock),
+  the flat delivery charge, and order statuses.
+- India-only storefront; all prices in INR.

@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SetShippingRateDto } from './dto/set-shipping-rate.dto';
 import { ShippingRate } from './shipping-rate.entity';
 
-/** Per-country delivery charges, managed by admins. */
+/** The single flat delivery charge (India-only), managed by admins. */
 @Injectable()
 export class ShippingService {
   constructor(
@@ -12,27 +12,16 @@ export class ShippingService {
     private readonly rates: Repository<ShippingRate>,
   ) {}
 
-  /** The delivery charge for a country, or null if none is configured. */
-  getForCountry(country: string): Promise<ShippingRate | null> {
-    return this.rates.findOne({ where: { country: country.toUpperCase() } });
+  /** The current delivery charge, or null if none is configured yet. */
+  get(): Promise<ShippingRate | null> {
+    return this.rates.findOne({ where: {}, order: { id: 'ASC' } });
   }
 
-  list(): Promise<ShippingRate[]> {
-    return this.rates.find({ order: { country: 'ASC' } });
-  }
-
-  /** Upsert the delivery charge for one country (admin). */
+  /** Upsert the single flat delivery charge (admin). */
   async upsert(dto: SetShippingRateDto): Promise<ShippingRate> {
-    const country = dto.country.toUpperCase();
-    const existing = await this.rates.findOne({ where: { country } });
-    const row = existing ?? this.rates.create({ country });
-    row.currency = dto.currency.toLowerCase();
+    const existing = await this.get();
+    const row = existing ?? this.rates.create();
     row.amountMinor = dto.amountMinor;
     return this.rates.save(row);
-  }
-
-  async remove(country: string): Promise<void> {
-    const res = await this.rates.delete({ country: country.toUpperCase() });
-    if (!res.affected) throw new NotFoundException('Shipping rate not found');
   }
 }

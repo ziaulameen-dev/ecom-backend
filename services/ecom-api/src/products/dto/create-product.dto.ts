@@ -7,11 +7,16 @@ import {
   MinLength,
 } from 'class-validator';
 
-/** Validated body for POST /api/products (admin only). Price is set separately. */
+/** Validated body for POST /api/products (admin only). */
 export class CreateProductDto {
   @IsString()
   @MinLength(2)
   name!: string;
+
+  // INR price in paise (e.g. 49900 = ₹499.00).
+  @IsInt()
+  @Min(0)
+  priceMinor!: number;
 
   @IsOptional()
   @IsString()
