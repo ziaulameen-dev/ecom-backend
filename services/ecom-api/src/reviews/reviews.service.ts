@@ -35,6 +35,29 @@ export class ReviewsService {
     return this.reviews.find({ order: { createdAt: 'DESC' } });
   }
 
+  /** Batch average + count per product (for listing cards). */
+  async summaryForProducts(
+    ids: string[],
+  ): Promise<Map<string, { avg: number; count: number }>> {
+    const map = new Map<string, { avg: number; count: number }>();
+    if (!ids.length) return map;
+    const rows = await this.reviews
+      .createQueryBuilder('r')
+      .select('r.product_id', 'productId')
+      .addSelect('AVG(r.rating)', 'avg')
+      .addSelect('COUNT(*)', 'count')
+      .where('r.product_id IN (:...ids)', { ids })
+      .groupBy('r.product_id')
+      .getRawMany<{ productId: string; avg: string; count: string }>();
+    for (const row of rows) {
+      map.set(row.productId, {
+        avg: Math.round(Number(row.avg) * 10) / 10,
+        count: Number(row.count),
+      });
+    }
+    return map;
+  }
+
   create(dto: CreateReviewDto): Promise<Review> {
     return this.reviews.save(this.reviews.create(dto));
   }

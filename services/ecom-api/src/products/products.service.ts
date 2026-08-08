@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AttributesService } from '../attributes/attributes.service';
 import { CategoriesService } from '../categories/categories.service';
+import { ReviewsService } from '../reviews/reviews.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateVariantDto, UpdateVariantDto } from './dto/variant.dto';
@@ -49,6 +50,8 @@ export interface ListingItem {
   priceMinor: number; // "from" price for a product with variants
   currency: string;
   inStock: boolean;
+  ratingAvg: number;
+  ratingCount: number;
 }
 
 /** Full product for the detail page. */
@@ -101,6 +104,7 @@ export class ProductsService {
     private readonly variants: Repository<ProductVariant>,
     private readonly categories: CategoriesService,
     private readonly attributes: AttributesService,
+    private readonly reviews: ReviewsService,
   ) {}
 
   /** How many products exist (used by the seeder to run only once). */
@@ -127,6 +131,8 @@ export class ProductsService {
 
     const products = await qb.getMany();
     const lookup = await this.optionLookup();
+    const ratings = await this.reviews.summaryForProducts(products.map((p) => p.id));
+    const ratingOf = (id: string) => ratings.get(id) ?? { avg: 0, count: 0 };
 
     const items: ListingItem[] = [];
     for (const p of products) {
@@ -137,6 +143,7 @@ export class ProductsService {
       const inStock = variants.length
         ? variants.some((v) => v.stock > 0)
         : p.stock > 0;
+      const r = ratingOf(p.id);
       items.push({
         key: p.id,
         productId: p.id,
@@ -148,6 +155,8 @@ export class ProductsService {
         priceMinor: priceFrom,
         currency: CURRENCY,
         inStock,
+        ratingAvg: r.avg,
+        ratingCount: r.count,
       });
       // Variants explicitly flagged to show as their own listing card.
       for (const v of variants.filter((x) => x.listedSeparately)) {
@@ -163,6 +172,8 @@ export class ProductsService {
           priceMinor: v.priceMinor,
           currency: CURRENCY,
           inStock: v.stock > 0,
+          ratingAvg: r.avg,
+          ratingCount: r.count,
         });
       }
     }

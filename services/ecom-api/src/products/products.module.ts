@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { AttributesModule } from '../attributes/attributes.module';
 import { CategoriesModule } from '../categories/categories.module';
+import { ReviewsModule } from '../reviews/reviews.module';
 import { Product } from './product.entity';
 import { ProductVariant } from './product-variant.entity';
 import { ProductsController } from './products.controller';
@@ -18,6 +19,7 @@ import { ProductsService } from './products.service';
     AuthModule,
     CategoriesModule,
     AttributesModule,
+    ReviewsModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService],
